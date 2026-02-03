@@ -1,5 +1,7 @@
+use std::ffi::{c_char, CStr};
 use std::fs;
 use std::io::Write;
+use std::sync::OnceLock;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use prost::Message;
@@ -12,9 +14,21 @@ pub mod block {
 
 use block::Block;
 
+static WORK_DIR: OnceLock<String> = OnceLock::new();
+
+fn get_work_dir() -> &'static str {
+    WORK_DIR.get().map(|s| s.as_str()).unwrap_or(".improved")
+}
+
 #[unsafe(no_mangle)]
-pub extern "C" fn init() {
+pub extern "C" fn init(work_dir: *const c_char) {
     env_logger::init();
+
+    if !work_dir.is_null() {
+        if let Ok(path) = unsafe { CStr::from_ptr(work_dir) }.to_str() {
+            let _ = WORK_DIR.set(path.to_string());
+        }
+    }
 }
 
 #[unsafe(no_mangle)]
@@ -27,8 +41,11 @@ pub extern "C" fn commit() -> i32 {
         }
     };
 
+    let work_dir = get_work_dir();
+
     // Read parent from HEAD if it exists, otherwise use 40 zeros
-    let parent = match fs::read_to_string(".improved/HEAD") {
+    let head_path = format!("{}/HEAD", work_dir);
+    let parent = match fs::read_to_string(&head_path) {
         Ok(contents) => contents.trim().to_string(),
         Err(_) => "0".repeat(40),
     };
@@ -52,14 +69,14 @@ pub extern "C" fn commit() -> i32 {
     let hash = hasher.finalize();
     let hash_hex = format!("{:x}", hash);
 
-    // Create .improved directory if it doesn't exist
-    if let Err(e) = fs::create_dir_all(".improved") {
-        log::error!("commit: failed to create .improved directory: {}", e);
+    // Create work directory if it doesn't exist
+    if let Err(e) = fs::create_dir_all(work_dir) {
+        log::error!("commit: failed to create {} directory: {}", work_dir, e);
         return -1;
     }
 
-    // Write the serialized block to .improved/<sha1>
-    let path = format!(".improved/{}", hash_hex);
+    // Write the serialized block to <work_dir>/<sha1>
+    let path = format!("{}/{}", work_dir, hash_hex);
     let mut file = match fs::File::create(&path) {
         Ok(f) => f,
         Err(e) => {
@@ -74,8 +91,7 @@ pub extern "C" fn commit() -> i32 {
     }
 
     // Update HEAD to point to the new block
-    let head_path = ".improved/HEAD";
-    let mut head_file = match fs::File::create(head_path) {
+    let mut head_file = match fs::File::create(&head_path) {
         Ok(f) => f,
         Err(e) => {
             log::error!("commit: failed to create HEAD file: {}", e);

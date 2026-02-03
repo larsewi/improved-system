@@ -4,7 +4,7 @@
 #include <improved.h>
 
 int main() {
-  init();
+  init(".bogus");
   int ret = commit();
   if (ret == -1) {
     return EXIT_FAILURE;
