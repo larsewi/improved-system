@@ -18,11 +18,6 @@ pub extern "C" fn init() {
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn add(left: i32, right: i32) -> i32 {
-    left + right
-}
-
-#[unsafe(no_mangle)]
 pub extern "C" fn commit() {
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -55,17 +50,9 @@ pub extern "C" fn commit() {
 
     log::info!(
         "commit: created block {} (version={}, timestamp={}, parent={})",
-        hash_hex, block.version, block.timestamp, block.parent
+        hash_hex,
+        block.version,
+        block.timestamp,
+        block.parent
     );
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
 }
