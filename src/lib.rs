@@ -13,6 +13,11 @@ pub mod block {
 use block::Block;
 
 #[unsafe(no_mangle)]
+pub extern "C" fn init() {
+    env_logger::init();
+}
+
+#[unsafe(no_mangle)]
 pub extern "C" fn add(left: i32, right: i32) -> i32 {
     left + right
 }
@@ -48,7 +53,7 @@ pub extern "C" fn commit() {
     let mut file = fs::File::create(&path).expect("Failed to create block file");
     file.write_all(&buf).expect("Failed to write block");
 
-    println!(
+    log::info!(
         "commit: created block {} (version={}, timestamp={}, parent={})",
         hash_hex, block.version, block.timestamp, block.parent
     );

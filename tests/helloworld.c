@@ -4,6 +4,7 @@
 #include <improved.h>
 
 int main() {
+  init();
   commit();
   return EXIT_SUCCESS;
 }

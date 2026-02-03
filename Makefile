@@ -10,7 +10,7 @@ all:
 
 check: helloworld
 	cargo test
-	./helloworld
+	RUST_LOG=info ./helloworld
 
 helloworld: tests/helloworld.o
 	$(CC) $^ -o $@ $(LDFLAGS) $(LDLIBS)
@@ -21,3 +21,4 @@ helloworld.o: tests/helloworld.c
 clean:
 	rm -f tests/helloworld.o
 	rm -f helloworld
+	rm -rf .improved

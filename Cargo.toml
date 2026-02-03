@@ -7,6 +7,8 @@ edition = "2024"
 crate-type = ["staticlib"]
 
 [dependencies]
+env_logger = "0.11"
+log = "0.4"
 prost = "0.14"
 prost-types = "0.14"
 sha1 = "0.10"
