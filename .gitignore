@@ -100,9 +100,9 @@ autom4te.cache
 /compile
 /config.cache
 /config.guess
-/config.h
-/config.h.in
-/config.h.in~
+src/config.h
+src/config.h.in
+src/config.h.in~
 /config.log
 /config.status
 /config.sub
@@ -112,7 +112,7 @@ autom4te.cache
 /depcomp
 /install-sh
 /missing
-/stamp-h1
+src/stamp-h1
 
 # https://www.gnu.org/software/libtool/
 
