@@ -1,0 +1,9 @@
+syntax = "proto3";
+
+package block;
+
+message Block {
+  int32 version = 1;
+  int32 timestamp = 2;
+  string parent = 3;
+}

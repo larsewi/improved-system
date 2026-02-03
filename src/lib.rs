@@ -1,71 +1,57 @@
-use prost::Message;
 use std::fs;
+use std::io::Write;
+use std::time::{SystemTime, UNIX_EPOCH};
+
+use prost::Message;
+use sha1::{Digest, Sha1};
 
 // Include generated protobuf code
-pub mod person {
-    include!(concat!(env!("OUT_DIR"), "/person.rs"));
+pub mod block {
+    include!(concat!(env!("OUT_DIR"), "/block.rs"));
 }
 
-use person::{AddressBook, Person, person::PhoneNumber, person::PhoneType};
+use block::Block;
 
 #[unsafe(no_mangle)]
 pub extern "C" fn add(left: i32, right: i32) -> i32 {
-    // Create a Person
-    let person = Person {
-        name: "Maria Garcia".to_string(),
-        id: 1234,
-        email: "maria.garcia@example.com".to_string(),
-        phone_numbers: vec!["555-1234".to_string(), "555-5678".to_string()],
-        phones: vec![PhoneNumber {
-            number: "555-9999".to_string(),
-            r#type: PhoneType::Mobile as i32,
-        }],
-        is_active: true,
-    };
-
-    println!("Created Person:");
-    println!("Name: {}", person.name);
-    println!("ID: {}", person.id);
-    println!("Email: {}", person.email);
-
-    // Serialize to bytes
-    let mut buf = Vec::new();
-    person.encode(&mut buf).unwrap();
-    println!("\nSerialized to {} bytes", buf.len());
-
-    // Deserialize from bytes
-    let decoded = Person::decode(&buf[..]).unwrap();
-    println!("\nDeserialized Person:");
-    println!("Name: {}", decoded.name);
-    println!("Active: {}", decoded.is_active);
-
-    // Save to file
-    fs::write("person.bin", &buf).unwrap();
-    println!("\nSaved to person.bin");
-
-    // Read from file
-    let file_data = fs::read("person.bin").unwrap();
-    let from_file = Person::decode(&file_data[..]).unwrap();
-    println!("Read from file: {}", from_file.name);
-
-    // Create AddressBook
-    let address_book = AddressBook {
-        people: vec![
-            person,
-            Person {
-                name: "Jane Smith".to_string(),
-                id: 5678,
-                email: "jane@example.com".to_string(),
-                phone_numbers: vec![],
-                phones: vec![],
-                is_active: true,
-            },
-        ],
-    };
-
-    println!("\nAddress book has {} people", address_book.people.len());
-
     left + right
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn commit() {
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i32;
+
+    let block = Block {
+        version: 1,
+        timestamp,
+        parent: "0000000000000000000000000000000000000000".to_string(),
+    };
+
+    // Serialize the block to protobuf bytes
+    let mut buf = Vec::new();
+    block.encode(&mut buf).expect("Failed to encode block");
+
+    // Calculate SHA-1 hash of the serialized protobuf
+    let mut hasher = Sha1::new();
+    hasher.update(&buf);
+    let hash = hasher.finalize();
+    let hash_hex = format!("{:x}", hash);
+
+    // Create .improved directory if it doesn't exist
+    fs::create_dir_all(".improved").expect("Failed to create .improved directory");
+
+    // Write the serialized block to .improved/<sha1>
+    let path = format!(".improved/{}", hash_hex);
+    let mut file = fs::File::create(&path).expect("Failed to create block file");
+    file.write_all(&buf).expect("Failed to write block");
+
+    println!(
+        "commit: created block {} (version={}, timestamp={}, parent={})",
+        hash_hex, block.version, block.timestamp, block.parent
+    );
 }
 
 #[cfg(test)]
