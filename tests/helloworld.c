@@ -5,6 +5,9 @@
 
 int main() {
   init();
-  commit();
+  int ret = commit();
+  if (ret == -1) {
+    return EXIT_FAILURE;
+  }
   return EXIT_SUCCESS;
 }

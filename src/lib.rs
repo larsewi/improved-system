@@ -18,11 +18,14 @@ pub extern "C" fn init() {
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn commit() {
-    let timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_secs() as i32;
+pub extern "C" fn commit() -> i32 {
+    let timestamp = match SystemTime::now().duration_since(UNIX_EPOCH) {
+        Ok(duration) => duration.as_secs() as i32,
+        Err(e) => {
+            log::error!("commit: failed to get system time: {}", e);
+            return -1;
+        }
+    };
 
     let block = Block {
         version: 1,
@@ -32,7 +35,10 @@ pub extern "C" fn commit() {
 
     // Serialize the block to protobuf bytes
     let mut buf = Vec::new();
-    block.encode(&mut buf).expect("Failed to encode block");
+    if let Err(e) = block.encode(&mut buf) {
+        log::error!("commit: failed to encode block: {}", e);
+        return -1;
+    }
 
     // Calculate SHA-1 hash of the serialized protobuf
     let mut hasher = Sha1::new();
@@ -41,12 +47,25 @@ pub extern "C" fn commit() {
     let hash_hex = format!("{:x}", hash);
 
     // Create .improved directory if it doesn't exist
-    fs::create_dir_all(".improved").expect("Failed to create .improved directory");
+    if let Err(e) = fs::create_dir_all(".improved") {
+        log::error!("commit: failed to create .improved directory: {}", e);
+        return -1;
+    }
 
     // Write the serialized block to .improved/<sha1>
     let path = format!(".improved/{}", hash_hex);
-    let mut file = fs::File::create(&path).expect("Failed to create block file");
-    file.write_all(&buf).expect("Failed to write block");
+    let mut file = match fs::File::create(&path) {
+        Ok(f) => f,
+        Err(e) => {
+            log::error!("commit: failed to create block file {}: {}", path, e);
+            return -1;
+        }
+    };
+
+    if let Err(e) = file.write_all(&buf) {
+        log::error!("commit: failed to write block to {}: {}", path, e);
+        return -1;
+    }
 
     log::info!(
         "commit: created block {} (version={}, timestamp={}, parent={})",
@@ -55,4 +74,6 @@ pub extern "C" fn commit() {
         block.timestamp,
         block.parent
     );
+
+    0
 }
