@@ -4,10 +4,7 @@
 #include <improved.h>
 
 int main() {
-  init(".bogus");
+  init(".improved");
   int ret = commit();
-  if (ret == -1) {
-    return EXIT_FAILURE;
-  }
-  return EXIT_SUCCESS;
+  return (ret == 0) ? EXIT_SUCCESS : EXIT_FAILURE;
 }
