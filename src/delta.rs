@@ -1,108 +1,97 @@
 use std::collections::HashMap;
 
 use crate::block::{Delta, DeltaEntry};
-use crate::state::State;
+use crate::state::{Row, State, Table};
 
-pub fn compute_delta(
-    previous_state: Option<State>,
-    current_state: &State,
-) -> Vec<Delta> {
+fn row_to_entry(row: &Row) -> DeltaEntry {
+    DeltaEntry {
+        key: row.primary_key.clone(),
+        value: row.subsidiary_val.clone(),
+    }
+}
+
+fn table_to_map(table: &Table) -> HashMap<&Vec<String>, &Vec<String>> {
+    table
+        .rows
+        .iter()
+        .map(|row| (&row.primary_key, &row.subsidiary_val))
+        .collect()
+}
+
+fn compute_table_delta(
+    prev_table: Option<&Table>,
+    curr_table: &Table,
+) -> (Vec<DeltaEntry>, Vec<DeltaEntry>, Vec<DeltaEntry>) {
+    let mut inserts = Vec::new();
+    let mut deletes = Vec::new();
+    let mut updates = Vec::new();
+
+    let Some(prev_table) = prev_table else {
+        // No previous table: all rows are inserts
+        let inserts = curr_table.rows.iter().map(row_to_entry).collect();
+        return (inserts, deletes, updates);
+    };
+
+    let prev_map = table_to_map(prev_table);
+    let curr_map = table_to_map(curr_table);
+
+    // Keys in previous but not current -> deletes
+    for (key, value) in &prev_map {
+        if !curr_map.contains_key(key) {
+            deletes.push(DeltaEntry {
+                key: (*key).clone(),
+                value: (*value).clone(),
+            });
+        }
+    }
+
+    // Keys in current but not previous -> inserts
+    // Keys in both with different values -> updates
+    for (key, value) in &curr_map {
+        match prev_map.get(key) {
+            None => {
+                inserts.push(DeltaEntry {
+                    key: (*key).clone(),
+                    value: (*value).clone(),
+                });
+            }
+            Some(prev_value) if prev_value != value => {
+                updates.push(DeltaEntry {
+                    key: (*key).clone(),
+                    value: (*value).clone(),
+                });
+            }
+            _ => {} // Same value, skip
+        }
+    }
+
+    (inserts, deletes, updates)
+}
+
+pub fn compute_delta(previous_state: Option<State>, current_state: &State) -> Vec<Delta> {
     let mut deltas = Vec::new();
 
+    // Process tables in current state
     for (table_name, current_table) in &current_state.tables {
-        let previous_table = previous_state
+        let prev_table = previous_state
             .as_ref()
             .and_then(|ps| ps.tables.get(table_name));
 
-        match previous_table {
-            None => {
-                // Table only in current state: all rows are inserts
-                let inserts: Vec<DeltaEntry> = current_table
-                    .rows
-                    .iter()
-                    .map(|row| DeltaEntry {
-                        key: row.primary_key.clone(),
-                        value: row.subsidiary_val.clone(),
-                    })
-                    .collect();
+        let (inserts, deletes, updates) = compute_table_delta(prev_table, current_table);
 
-                deltas.push(Delta {
-                    name: table_name.clone(),
-                    inserts,
-                    deletes: Vec::new(),
-                    updates: Vec::new(),
-                });
-            }
-            Some(prev_table) => {
-                // Table in both states: compare keys
-                let prev_map: HashMap<&Vec<String>, &Vec<String>> = prev_table
-                    .rows
-                    .iter()
-                    .map(|row| (&row.primary_key, &row.subsidiary_val))
-                    .collect();
-
-                let curr_map: HashMap<&Vec<String>, &Vec<String>> = current_table
-                    .rows
-                    .iter()
-                    .map(|row| (&row.primary_key, &row.subsidiary_val))
-                    .collect();
-
-                let mut inserts = Vec::new();
-                let mut deletes = Vec::new();
-                let mut updates = Vec::new();
-
-                // Keys in previous but not current -> deletes
-                for (key, value) in &prev_map {
-                    if !curr_map.contains_key(key) {
-                        deletes.push(DeltaEntry {
-                            key: (*key).clone(),
-                            value: (*value).clone(),
-                        });
-                    }
-                }
-
-                // Keys in current but not previous -> inserts
-                // Keys in both with different values -> updates
-                for (key, value) in &curr_map {
-                    match prev_map.get(key) {
-                        None => {
-                            inserts.push(DeltaEntry {
-                                key: (*key).clone(),
-                                value: (*value).clone(),
-                            });
-                        }
-                        Some(prev_value) if prev_value != value => {
-                            updates.push(DeltaEntry {
-                                key: (*key).clone(),
-                                value: (*value).clone(),
-                            });
-                        }
-                        _ => {} // Same value, skip
-                    }
-                }
-
-                deltas.push(Delta {
-                    name: table_name.clone(),
-                    inserts,
-                    deletes,
-                    updates,
-                });
-            }
-        }
+        deltas.push(Delta {
+            name: table_name.clone(),
+            inserts,
+            deletes,
+            updates,
+        });
     }
 
     // Tables only in previous state: all rows are deletes
     if let Some(ref previous) = previous_state {
         for (table_name, table) in &previous.tables {
             if !current_state.tables.contains_key(table_name) {
-                let deletes: Vec<DeltaEntry> = table
-                    .rows
-                    .iter()
-                    .map(|row| DeltaEntry {
-                        key: row.primary_key.clone(),
-                        value: row.subsidiary_val.clone(),
-                    })
-                    .collect();
+                let deletes = table.rows.iter().map(row_to_entry).collect();
 
                 deltas.push(Delta {
                     name: table_name.clone(),
@@ -120,7 +109,6 @@ pub fn compute_delta(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::state::{Row, Table};
 
     fn make_row(key: &[&str], value: &[&str]) -> Row {
         Row {
@@ -177,8 +165,12 @@ mod tests {
                 make_row(&["2"], &["data2"]),
             ]),
         );
-        let previous = State { tables: prev_tables };
-        let current = State { tables: HashMap::new() };
+        let previous = State {
+            tables: prev_tables,
+        };
+        let current = State {
+            tables: HashMap::new(),
+        };
 
         let deltas = compute_delta(Some(previous), &current);
 
@@ -195,23 +187,27 @@ mod tests {
         prev_tables.insert(
             "users".to_string(),
             make_table(vec![
-                make_row(&["1"], &["alice"]),      // will be updated
-                make_row(&["2"], &["bob"]),        // will be deleted
-                make_row(&["3"], &["charlie"]),   // will be updated
+                make_row(&["1"], &["alice"]),   // will be updated
+                make_row(&["2"], &["bob"]),     // will be deleted
+                make_row(&["3"], &["charlie"]), // will be updated
             ]),
         );
-        let previous = State { tables: prev_tables };
+        let previous = State {
+            tables: prev_tables,
+        };
 
         let mut curr_tables = HashMap::new();
         curr_tables.insert(
             "users".to_string(),
             make_table(vec![
-                make_row(&["1"], &["alice_updated"]),  // update
-                make_row(&["3"], &["charlie"]),        // update (same value)
-                make_row(&["4"], &["dave"]),           // insert
+                make_row(&["1"], &["alice_updated"]), // update
+                make_row(&["3"], &["charlie"]),       // update (same value)
+                make_row(&["4"], &["dave"]),          // insert
             ]),
         );
-        let current = State { tables: curr_tables };
+        let current = State {
+            tables: curr_tables,
+        };
 
         let deltas = compute_delta(Some(previous), &current);
 
@@ -243,7 +239,9 @@ mod tests {
             "table_b".to_string(),
             make_table(vec![make_row(&["1"], &["b"])]),
         );
-        let previous = State { tables: prev_tables };
+        let previous = State {
+            tables: prev_tables,
+        };
 
         let mut curr_tables = HashMap::new();
         curr_tables.insert(
@@ -254,7 +252,9 @@ mod tests {
             "table_c".to_string(),
             make_table(vec![make_row(&["1"], &["c"])]),
         );
-        let current = State { tables: curr_tables };
+        let current = State {
+            tables: curr_tables,
+        };
 
         let deltas = compute_delta(Some(previous), &current);
 
@@ -280,8 +280,12 @@ mod tests {
 
     #[test]
     fn test_empty_states() {
-        let previous = State { tables: HashMap::new() };
-        let current = State { tables: HashMap::new() };
+        let previous = State {
+            tables: HashMap::new(),
+        };
+        let current = State {
+            tables: HashMap::new(),
+        };
 
         let deltas = compute_delta(Some(previous), &current);
         assert_eq!(deltas.len(), 0);
@@ -297,17 +301,21 @@ mod tests {
                 make_row(&["user1", "order2"], &["200"]),
             ]),
         );
-        let previous = State { tables: prev_tables };
+        let previous = State {
+            tables: prev_tables,
+        };
 
         let mut curr_tables = HashMap::new();
         curr_tables.insert(
             "orders".to_string(),
             make_table(vec![
-                make_row(&["user1", "order1"], &["150"]),  // update
-                make_row(&["user2", "order1"], &["300"]),  // insert (different user)
+                make_row(&["user1", "order1"], &["150"]), // update
+                make_row(&["user2", "order1"], &["300"]), // insert (different user)
             ]),
         );
-        let current = State { tables: curr_tables };
+        let current = State {
+            tables: curr_tables,
+        };
 
         let deltas = compute_delta(Some(previous), &current);
 
