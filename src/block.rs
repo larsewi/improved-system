@@ -3,7 +3,11 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use prost::Message;
 use sha1::{Digest, Sha1};
 
-use crate::block::Block;
+mod proto {
+    include!(concat!(env!("OUT_DIR"), "/block.rs"));
+}
+
+pub use proto::{Block, Delta, DeltaEntry};
 use crate::delta;
 use crate::state;
 use crate::storage;

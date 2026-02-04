@@ -1,14 +1,10 @@
 use std::ffi::{c_char, CStr};
 
-mod block_ops;
+pub mod block;
 mod config;
 mod delta;
 pub mod state;
 mod storage;
-
-pub mod block {
-    include!(concat!(env!("OUT_DIR"), "/block.rs"));
-}
 
 #[unsafe(no_mangle)]
 pub extern "C" fn init(work_dir: *const c_char) -> i32 {
@@ -36,7 +32,7 @@ pub extern "C" fn init(work_dir: *const c_char) -> i32 {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn commit() -> i32 {
-    match block_ops::commit_impl() {
+    match block::commit_impl() {
         Ok(_) => 0,
         Err(e) => {
             log::error!("commit: {}", e);
