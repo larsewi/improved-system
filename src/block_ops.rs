@@ -5,7 +5,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use prost::Message;
 use sha1::{Digest, Sha1};
 
-use crate::block::{Block, PreviousState, Row, Table};
+use crate::block::{Block, State, Row, Table};
 use crate::config::{self, TableConfig};
 use crate::storage;
 
@@ -106,7 +106,7 @@ pub fn commit_impl() -> Result<String, Box<dyn std::error::Error>> {
         );
     }
 
-    let current_state = PreviousState { tables: all_tables };
+    let current_state = State { tables: all_tables };
     let mut current_state_buf = Vec::new();
     current_state.encode(&mut current_state_buf)?;
 

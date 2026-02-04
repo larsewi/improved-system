@@ -19,6 +19,6 @@ message Table {
   repeated string primary_key_names = 3;
 }
 
-message PreviousState {
+message State {
   map<string, Table> tables = 1;
 }
