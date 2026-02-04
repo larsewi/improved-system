@@ -4,13 +4,19 @@ use prost::Message;
 use sha1::{Digest, Sha1};
 
 mod proto {
-    include!(concat!(env!("OUT_DIR"), "/block.rs"));
+    pub mod block {
+        include!(concat!(env!("OUT_DIR"), "/block.rs"));
+    }
+    pub mod delta {
+        include!(concat!(env!("OUT_DIR"), "/delta.rs"));
+    }
 }
 
 use crate::delta;
 use crate::state;
 use crate::storage;
-pub use proto::{Block, Delta, DeltaEntry};
+pub use proto::block::Block;
+pub use proto::delta::{Delta, DeltaEntry};
 
 fn get_timestamp() -> Result<i32, &'static str> {
     SystemTime::now()
