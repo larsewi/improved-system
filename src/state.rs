@@ -5,7 +5,7 @@ use prost::Message;
 
 use crate::config::{self, TableConfig};
 
-pub use crate::entry::Entry;
+pub use crate::proto::entry::Entry;
 pub use crate::table::{State, Table};
 
 pub fn load_previous_state() -> Result<Option<State>, Box<dyn std::error::Error>> {

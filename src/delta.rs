@@ -1,5 +1,5 @@
 use crate::block::Delta;
-use crate::entry::Entry;
+use crate::proto::entry::Entry;
 use crate::table::{table_to_map, State, Table};
 
 fn compute_table_delta(

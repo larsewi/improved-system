@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-pub use crate::entry::Entry;
+pub use crate::proto::entry::Entry;
 pub use crate::proto::state::State;
 pub use crate::proto::table::Table;
 
