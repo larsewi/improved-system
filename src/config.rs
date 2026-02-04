@@ -14,13 +14,9 @@ pub struct Config {
 #[derive(Debug, Deserialize)]
 pub struct TableConfig {
     pub source: String,
-    pub keys: KeysConfig,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct KeysConfig {
-    pub primary: Vec<String>,
-    pub subsidiary: Vec<String>,
+    pub columns: Vec<String>,
+    #[serde(rename = "primary-key")]
+    pub primary_key: Vec<String>,
 }
 
 static CONFIG: OnceLock<Config> = OnceLock::new();
