@@ -1,23 +1,11 @@
-use std::ffi::{CStr, c_char};
-use std::fs;
-use std::io::Write;
-use std::sync::OnceLock;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::ffi::{c_char, CStr};
 
-use prost::Message;
-use sha1::{Digest, Sha1};
+mod block_ops;
+mod config;
+mod storage;
 
-// Include generated protobuf code
 pub mod block {
     include!(concat!(env!("OUT_DIR"), "/block.rs"));
-}
-
-use block::Block;
-
-static WORK_DIR: OnceLock<String> = OnceLock::new();
-
-fn get_work_dir() -> &'static str {
-    WORK_DIR.get().map(|s| s.as_str()).unwrap_or(".improved")
 }
 
 #[unsafe(no_mangle)]
@@ -30,7 +18,7 @@ pub extern "C" fn init(work_dir: *const c_char) -> i32 {
     }
 
     match unsafe { CStr::from_ptr(work_dir) }.to_str() {
-        Ok(path) => match WORK_DIR.set(path.to_string()) {
+        Ok(path) => match config::set_work_dir(path.to_string()) {
             Ok(_) => {
                 log::debug!("init: work directory: {}", path);
                 0
@@ -42,91 +30,18 @@ pub extern "C" fn init(work_dir: *const c_char) -> i32 {
         },
         Err(e) => {
             log::error!("init: bad argument: {e}");
-            return -1;
+            -1
         }
     }
 }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn commit() -> i32 {
-    let timestamp = match SystemTime::now().duration_since(UNIX_EPOCH) {
-        Ok(duration) => duration.as_secs() as i32,
+    match block_ops::commit_impl() {
+        Ok(_) => 0,
         Err(e) => {
-            log::error!("commit: failed to get system time: {}", e);
-            return -1;
+            log::error!("commit: {}", e);
+            -1
         }
-    };
-
-    let work_dir = get_work_dir();
-
-    // Read parent from HEAD if it exists, otherwise use 40 zeros
-    let head_path = format!("{}/HEAD", work_dir);
-    let parent = match fs::read_to_string(&head_path) {
-        Ok(contents) => contents.trim().to_string(),
-        Err(_) => "0".repeat(40),
-    };
-
-    let block = Block {
-        version: 1,
-        timestamp,
-        parent,
-    };
-
-    // Serialize the block to protobuf bytes
-    let mut buf = Vec::new();
-    if let Err(e) = block.encode(&mut buf) {
-        log::error!("commit: failed to encode block: {}", e);
-        return -1;
     }
-
-    // Calculate SHA-1 hash of the serialized protobuf
-    let mut hasher = Sha1::new();
-    hasher.update(&buf);
-    let hash = hasher.finalize();
-    let hash_hex = format!("{:x}", hash);
-
-    // Create work directory if it doesn't exist
-    if let Err(e) = fs::create_dir_all(work_dir) {
-        log::error!("commit: failed to create {} directory: {}", work_dir, e);
-        return -1;
-    }
-
-    // Write the serialized block to <work_dir>/<sha1>
-    let path = format!("{}/{}", work_dir, hash_hex);
-    let mut file = match fs::File::create(&path) {
-        Ok(f) => f,
-        Err(e) => {
-            log::error!("commit: failed to create block file {}: {}", path, e);
-            return -1;
-        }
-    };
-
-    if let Err(e) = file.write_all(&buf) {
-        log::error!("commit: failed to write block to {}: {}", path, e);
-        return -1;
-    }
-
-    // Update HEAD to point to the new block
-    let mut head_file = match fs::File::create(&head_path) {
-        Ok(f) => f,
-        Err(e) => {
-            log::error!("commit: failed to create HEAD file: {}", e);
-            return -1;
-        }
-    };
-
-    if let Err(e) = head_file.write_all(hash_hex.as_bytes()) {
-        log::error!("commit: failed to write HEAD: {}", e);
-        return -1;
-    }
-
-    log::info!(
-        "commit: created block {} (version={}, timestamp={}, parent={})",
-        hash_hex,
-        block.version,
-        block.timestamp,
-        block.parent
-    );
-
-    0
 }
