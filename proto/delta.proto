@@ -2,11 +2,11 @@ syntax = "proto3";
 
 package delta;
 
-import "row.proto";
+import "entry.proto";
 
 message Delta {
   string name = 1;
-  repeated row.Row inserts = 2;
-  repeated row.Row deletes = 3;
-  repeated row.Row updates = 4;
+  repeated entry.Entry inserts = 2;
+  repeated entry.Entry deletes = 3;
+  repeated entry.Entry updates = 4;
 }

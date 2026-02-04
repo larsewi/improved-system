@@ -6,8 +6,8 @@ use prost::Message;
 use crate::config::{self, TableConfig};
 
 mod proto {
-    pub mod row {
-        include!(concat!(env!("OUT_DIR"), "/row.rs"));
+    pub mod entry {
+        include!(concat!(env!("OUT_DIR"), "/entry.rs"));
     }
     pub mod table {
         include!(concat!(env!("OUT_DIR"), "/table.rs"));
@@ -17,7 +17,7 @@ mod proto {
     }
 }
 
-pub use proto::row::Row;
+pub use proto::entry::Entry as Row;
 pub use proto::state::State;
 pub use proto::table::Table;
 
@@ -101,10 +101,7 @@ pub fn load_current_state() -> Result<State, Box<dyn std::error::Error>> {
 
         let rows: Vec<Row> = table_data
             .into_iter()
-            .map(|(pk, sub)| Row {
-                primary_key: pk,
-                subsidiary_val: sub,
-            })
+            .map(|(pk, sub)| Row { key: pk, value: sub })
             .collect();
 
         all_tables.insert(

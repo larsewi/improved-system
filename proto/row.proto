@@ -1,8 +1,0 @@
-syntax = "proto3";
-
-package row;
-
-message Row {
-  repeated string primary_key = 1;
-  repeated string subsidiary_val = 2;
-}

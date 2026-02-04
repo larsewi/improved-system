@@ -5,8 +5,8 @@ use crate::state::{Row, State, Table};
 
 fn row_to_entry(row: &Row) -> DeltaEntry {
     DeltaEntry {
-        primary_key: row.primary_key.clone(),
-        subsidiary_val: row.subsidiary_val.clone(),
+        key: row.key.clone(),
+        value: row.value.clone(),
     }
 }
 
@@ -14,7 +14,7 @@ fn table_to_map(table: &Table) -> HashMap<&Vec<String>, &Vec<String>> {
     table
         .rows
         .iter()
-        .map(|row| (&row.primary_key, &row.subsidiary_val))
+        .map(|row| (&row.key, &row.value))
         .collect()
 }
 
@@ -36,29 +36,29 @@ fn compute_table_delta(
     let curr_map = table_to_map(curr_table);
 
     // Keys in previous but not current -> deletes
-    for (key, value) in &prev_map {
-        if !curr_map.contains_key(key) {
+    for (k, v) in &prev_map {
+        if !curr_map.contains_key(k) {
             deletes.push(DeltaEntry {
-                primary_key: (*key).clone(),
-                subsidiary_val: (*value).clone(),
+                key: (*k).clone(),
+                value: (*v).clone(),
             });
         }
     }
 
     // Keys in current but not previous -> inserts
     // Keys in both with different values -> updates
-    for (key, value) in &curr_map {
-        match prev_map.get(key) {
+    for (k, v) in &curr_map {
+        match prev_map.get(k) {
             None => {
                 inserts.push(DeltaEntry {
-                    primary_key: (*key).clone(),
-                    subsidiary_val: (*value).clone(),
+                    key: (*k).clone(),
+                    value: (*v).clone(),
                 });
             }
-            Some(prev_value) if prev_value != value => {
+            Some(prev_value) if prev_value != v => {
                 updates.push(DeltaEntry {
-                    primary_key: (*key).clone(),
-                    subsidiary_val: (*value).clone(),
+                    key: (*k).clone(),
+                    value: (*v).clone(),
                 });
             }
             _ => {} // Same value, skip
@@ -112,8 +112,8 @@ mod tests {
 
     fn make_row(key: &[&str], value: &[&str]) -> Row {
         Row {
-            primary_key: key.iter().map(|s| s.to_string()).collect(),
-            subsidiary_val: value.iter().map(|s| s.to_string()).collect(),
+            key: key.iter().map(|s| s.to_string()).collect(),
+            value: value.iter().map(|s| s.to_string()).collect(),
         }
     }
 
@@ -131,7 +131,7 @@ mod tests {
 
     fn has_entry(entries: &[DeltaEntry], key: &[&str]) -> bool {
         let key_vec: Vec<String> = key.iter().map(|s| s.to_string()).collect();
-        entries.iter().any(|e| e.primary_key == key_vec)
+        entries.iter().any(|e| e.key == key_vec)
     }
 
     #[test]

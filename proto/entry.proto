@@ -1,0 +1,8 @@
+syntax = "proto3";
+
+package entry;
+
+message Entry {
+  repeated string key = 1;
+  repeated string value = 2;
+}
