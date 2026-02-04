@@ -14,7 +14,8 @@ message Row {
 }
 
 message Table {
-  repeated Row rows = 1;
+  repeated string field_names = 1;
+  repeated Row rows = 2;
 }
 
 message PreviousState {

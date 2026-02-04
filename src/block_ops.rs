@@ -96,7 +96,13 @@ pub fn commit_impl() -> Result<String, Box<dyn std::error::Error>> {
             })
             .collect();
 
-        all_tables.insert(name.clone(), Table { rows });
+        all_tables.insert(
+            name.clone(),
+            Table {
+                field_names: table.columns.clone(),
+                rows,
+            },
+        );
     }
 
     let current_state = PreviousState { tables: all_tables };
