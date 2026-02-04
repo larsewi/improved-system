@@ -119,7 +119,7 @@ mod tests {
 
     fn make_table(rows: Vec<Row>) -> Table {
         Table {
-            field_names: vec![],
+            fields: vec![],
             primary_key_names: vec![],
             rows,
         }

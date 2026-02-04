@@ -107,7 +107,7 @@ pub fn load_current_state() -> Result<State, Box<dyn std::error::Error>> {
         all_tables.insert(
             name.clone(),
             Table {
-                field_names: table.field_names.clone(),
+                fields: table.field_names.clone(),
                 primary_key_names: table.primary_key.clone(),
                 rows,
             },
