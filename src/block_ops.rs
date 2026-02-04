@@ -100,6 +100,7 @@ pub fn commit_impl() -> Result<String, Box<dyn std::error::Error>> {
             name.clone(),
             Table {
                 field_names: table.field_names.clone(),
+                primary_key_names: table.primary_key.clone(),
                 rows,
             },
         );
