@@ -3,6 +3,7 @@ fn main() {
         &[
             "proto/block.proto",
             "proto/delta.proto",
+            "proto/row.proto",
             "proto/state.proto",
             "proto/table.proto",
         ],
