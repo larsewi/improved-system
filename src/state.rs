@@ -108,7 +108,7 @@ pub fn load_current_state() -> Result<State, Box<dyn std::error::Error>> {
             name.clone(),
             Table {
                 fields: table.field_names.clone(),
-                primary_key_names: table.primary_key.clone(),
+                primary_key: table.primary_key.clone(),
                 rows,
             },
         );

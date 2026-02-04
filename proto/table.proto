@@ -6,6 +6,6 @@ import "entry.proto";
 
 message Table {
   repeated string fields = 1;
-  repeated string primary_key_names = 2;
+  repeated string primary_key = 2;
   repeated entry.Entry rows = 3;
 }
