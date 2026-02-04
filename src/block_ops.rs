@@ -32,15 +32,15 @@ fn parse_table(
     table: &TableConfig,
     reader: csv::Reader<File>,
 ) -> Result<HashMap<Vec<String>, Vec<String>>, Box<dyn std::error::Error>> {
-    // Find indices for primary key columns and subsidiary columns
+    // Find indices for primary key fields and subsidiary fields
     let primary_indices: Vec<usize> = table
         .primary_key
         .iter()
-        .filter_map(|pk_col| table.columns.iter().position(|c| c == pk_col))
+        .filter_map(|pk_col| table.field_names.iter().position(|c| c == pk_col))
         .collect();
 
     let subsidiary_indices: Vec<usize> = table
-        .columns
+        .field_names
         .iter()
         .enumerate()
         .filter(|(_, col)| !table.primary_key.contains(col))
@@ -99,7 +99,7 @@ pub fn commit_impl() -> Result<String, Box<dyn std::error::Error>> {
         all_tables.insert(
             name.clone(),
             Table {
-                field_names: table.columns.clone(),
+                field_names: table.field_names.clone(),
                 rows,
             },
         );

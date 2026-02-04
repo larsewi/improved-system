@@ -14,7 +14,8 @@ pub struct Config {
 #[derive(Debug, Deserialize)]
 pub struct TableConfig {
     pub source: String,
-    pub columns: Vec<String>,
+    #[serde(rename = "field-names")]
+    pub field_names: Vec<String>,
     #[serde(rename = "primary-key")]
     pub primary_key: Vec<String>,
 }
