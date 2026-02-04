@@ -10,7 +10,7 @@ message Block {
 
 message Row {
   repeated string primary_key = 1;
-  repeated string subsidiary = 2;
+  repeated string subsidiary_val = 2;
 }
 
 message Table {

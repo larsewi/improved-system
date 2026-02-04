@@ -92,7 +92,7 @@ pub fn commit_impl() -> Result<String, Box<dyn std::error::Error>> {
             .into_iter()
             .map(|(pk, sub)| Row {
                 primary_key: pk,
-                subsidiary: sub,
+                subsidiary_val: sub,
             })
             .collect();
 
