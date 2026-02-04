@@ -5,6 +5,7 @@ mod config;
 mod delta;
 pub mod state;
 mod storage;
+pub mod table;
 
 #[unsafe(no_mangle)]
 pub extern "C" fn init(work_dir: *const c_char) -> i32 {

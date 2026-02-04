@@ -5,21 +5,7 @@ use prost::Message;
 
 use crate::config::{self, TableConfig};
 
-mod proto {
-    pub mod entry {
-        include!(concat!(env!("OUT_DIR"), "/entry.rs"));
-    }
-    pub mod table {
-        include!(concat!(env!("OUT_DIR"), "/table.rs"));
-    }
-    pub mod state {
-        include!(concat!(env!("OUT_DIR"), "/state.rs"));
-    }
-}
-
-pub use proto::entry::Entry as Row;
-pub use proto::state::State;
-pub use proto::table::Table;
+pub use crate::table::{Row, State, Table};
 
 pub fn load_previous_state() -> Result<Option<State>, Box<dyn std::error::Error>> {
     let cfg = config::get_config()?;

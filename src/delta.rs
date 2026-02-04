@@ -1,21 +1,11 @@
-use std::collections::HashMap;
-
 use crate::block::{Delta, DeltaEntry};
-use crate::state::{Row, State, Table};
+use crate::table::{table_to_map, Row, State, Table};
 
 fn row_to_entry(row: &Row) -> DeltaEntry {
     DeltaEntry {
         key: row.key.clone(),
         value: row.value.clone(),
     }
-}
-
-fn table_to_map(table: &Table) -> HashMap<&Vec<String>, &Vec<String>> {
-    table
-        .rows
-        .iter()
-        .map(|row| (&row.key, &row.value))
-        .collect()
 }
 
 fn compute_table_delta(
