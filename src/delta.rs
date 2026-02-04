@@ -62,18 +62,22 @@ pub fn compute_delta(
                 }
 
                 // Keys in current but not previous -> inserts
-                // Keys in both -> updates
+                // Keys in both with different values -> updates
                 for (key, value) in &curr_map {
-                    if !prev_map.contains_key(key) {
-                        inserts.push(DeltaEntry {
-                            key: (*key).clone(),
-                            value: (*value).clone(),
-                        });
-                    } else {
-                        updates.push(DeltaEntry {
-                            key: (*key).clone(),
-                            value: (*value).clone(),
-                        });
+                    match prev_map.get(key) {
+                        None => {
+                            inserts.push(DeltaEntry {
+                                key: (*key).clone(),
+                                value: (*value).clone(),
+                            });
+                        }
+                        Some(prev_value) if prev_value != value => {
+                            updates.push(DeltaEntry {
+                                key: (*key).clone(),
+                                value: (*value).clone(),
+                            });
+                        }
+                        _ => {} // Same value, skip
                     }
                 }
 
@@ -222,10 +226,10 @@ mod tests {
         assert_eq!(delta.deletes.len(), 1);
         assert!(has_entry(&delta.deletes, &["2"]));
 
-        // Keys "1" and "3" in both -> updates
-        assert_eq!(delta.updates.len(), 2);
+        // Key "1" changed value -> update
+        // Key "3" has same value -> skipped
+        assert_eq!(delta.updates.len(), 1);
         assert!(has_entry(&delta.updates, &["1"]));
-        assert!(has_entry(&delta.updates, &["3"]));
     }
 
     #[test]
