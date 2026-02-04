@@ -7,6 +7,7 @@ use sha1::{Digest, Sha1};
 
 use crate::block::{Block, Row, State, Table};
 use crate::config::{self, TableConfig};
+use crate::delta;
 use crate::storage;
 
 fn get_timestamp() -> Result<i32, &'static str> {
@@ -131,6 +132,7 @@ pub fn commit_impl() -> Result<String, Box<dyn std::error::Error>> {
 
     let previous_state = load_previous_state()?;
     let current_state = load_current_state()?;
+    let payload = delta::compute_delta(previous_state, &current_state);
 
     let timestamp = get_timestamp()?;
     let parent = storage::read_head()?;
@@ -139,6 +141,7 @@ pub fn commit_impl() -> Result<String, Box<dyn std::error::Error>> {
         version: 1,
         timestamp,
         parent,
+        payload,
     };
 
     let buf = encode_block(&block)?;
@@ -183,6 +186,7 @@ mod tests {
             version: 1,
             timestamp: 1700000000,
             parent: "abc123".to_string(),
+            payload: Vec::new(),
         };
         let result = encode_block(&block);
         assert!(result.is_ok());
