@@ -99,15 +99,9 @@ pub fn commit_impl() -> Result<String, Box<dyn std::error::Error>> {
         all_tables.insert(name.clone(), Table { rows });
     }
 
-    let previous_state = PreviousState {
-        tables: all_tables,
-    };
-    let mut state_buf = Vec::new();
-    previous_state.encode(&mut state_buf)?;
-
-    let state_path = cfg.work_dir.join("previous_state");
-    std::fs::write(&state_path, &state_buf)?;
-    log::info!("commit: wrote previous_state to '{}'", state_path.display());
+    let current_state = PreviousState { tables: all_tables };
+    let mut current_state_buf = Vec::new();
+    current_state.encode(&mut current_state_buf)?;
 
     let timestamp = get_timestamp()?;
     let parent = storage::read_head()?;
@@ -132,6 +126,10 @@ pub fn commit_impl() -> Result<String, Box<dyn std::error::Error>> {
         block.timestamp,
         block.parent
     );
+
+    let state_path = cfg.work_dir.join("previous_state");
+    std::fs::write(&state_path, &current_state_buf)?;
+    log::info!("commit: wrote previous_state to '{}'", state_path.display());
 
     Ok(hash)
 }
