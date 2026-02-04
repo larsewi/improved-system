@@ -13,7 +13,10 @@ pub fn load_previous_state() -> Result<Option<State>, Box<dyn std::error::Error>
     let cfg = config::get_config()?;
     let state_path = cfg.work_dir.join("previous_state");
     if !state_path.exists() {
-        log::info!("commit: no previous_state file found");
+        log::info!(
+            "commit: no previous_state file found in '{}'",
+            cfg.work_dir.display()
+        );
         return Ok(None);
     }
 
@@ -74,7 +77,8 @@ pub fn load_current_state() -> Result<State, Box<dyn std::error::Error>> {
 
     for (name, table) in &cfg.tables {
         let source_path = cfg.work_dir.join(&table.source);
-        let file = File::open(&source_path)?;
+        let file = File::open(&source_path)
+            .map_err(|e| format!("failed to open '{}': {}", source_path.display(), e))?;
         let reader = csv::ReaderBuilder::new()
             .has_headers(false)
             .from_reader(file);
@@ -89,7 +93,10 @@ pub fn load_current_state() -> Result<State, Box<dyn std::error::Error>> {
 
         let rows: Vec<Entry> = table_data
             .into_iter()
-            .map(|(pk, sub)| Entry { key: pk, value: sub })
+            .map(|(pk, sub)| Entry {
+                key: pk,
+                value: sub,
+            })
             .collect();
 
         all_tables.insert(

@@ -3,23 +3,23 @@ CPPFLAGS = -Iinclude
 LDFLAGS = -Ltarget/debug
 LDLIBS = -limproved_system
 
-.PHONY: all check phony
+.PHONY: all check
 
 all:
 	cargo build
 
-check: helloworld
-	mkdir -p .improved
-	cp tests/config.toml .improved/
-	RUST_LOG=debug ./helloworld
+check: tests/prog
+	mkdir -p tests/.workdir
+	cp tests/config.toml tests/.workdir/
+	RUST_LOG=debug ./tests/prog tests/.workdir commit
 
-helloworld: tests/helloworld.o
-	$(CC) $^ -o $@ $(LDFLAGS) $(LDLIBS) -Wl,-rpath,'$$ORIGIN/target/debug'
+tests/prog: tests/main.o
+	$(CC) $^ -o $@ $(LDFLAGS) $(LDLIBS) -Wl,-rpath,'$$ORIGIN/../target/debug'
 
-helloworld.o: tests/helloworld.c
+tests/main.o: tests/main.c
 	$(CC) $(CFLAGS) $(CPPFLAGS) -c $< -o $@
 
 clean:
-	rm -f tests/helloworld.o
-	rm -f helloworld
-	rm -rf .improved
+	rm -f tests/main.o
+	rm -f tests/prog
+	rm -rf tests/.workdir
