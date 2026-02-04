@@ -1,6 +1,8 @@
-use crate::block::Delta;
-use crate::proto::entry::Entry;
-use crate::table::{table_to_map, State, Table};
+pub use crate::proto::delta::Delta;
+
+use crate::entry::Entry;
+use crate::state::State;
+use crate::table::{table_to_map, Table};
 
 fn compute_table_delta(
     prev_table: Option<&Table>,

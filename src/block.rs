@@ -8,8 +8,6 @@ use crate::state;
 use crate::storage;
 
 pub use crate::proto::block::Block;
-pub use crate::proto::delta::Delta;
-pub use crate::proto::entry::Entry;
 
 fn get_timestamp() -> Result<i32, &'static str> {
     SystemTime::now()
