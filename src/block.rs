@@ -3,24 +3,13 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use prost::Message;
 use sha1::{Digest, Sha1};
 
-mod proto {
-    pub mod block {
-        include!(concat!(env!("OUT_DIR"), "/block.rs"));
-    }
-    pub mod entry {
-        include!(concat!(env!("OUT_DIR"), "/entry.rs"));
-    }
-    pub mod delta {
-        include!(concat!(env!("OUT_DIR"), "/delta.rs"));
-    }
-}
-
 use crate::delta;
 use crate::state;
 use crate::storage;
-pub use proto::block::Block;
-pub use proto::delta::Delta;
-pub use proto::entry::Entry as DeltaEntry;
+
+pub use crate::proto::block::Block;
+pub use crate::proto::delta::Delta;
+pub use crate::entry::Entry;
 
 fn get_timestamp() -> Result<i32, &'static str> {
     SystemTime::now()

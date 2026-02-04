@@ -1,24 +1,18 @@
-use crate::block::{Delta, DeltaEntry};
-use crate::table::{table_to_map, Row, State, Table};
-
-fn row_to_entry(row: &Row) -> DeltaEntry {
-    DeltaEntry {
-        key: row.key.clone(),
-        value: row.value.clone(),
-    }
-}
+use crate::block::Delta;
+use crate::entry::Entry;
+use crate::table::{table_to_map, State, Table};
 
 fn compute_table_delta(
     prev_table: Option<&Table>,
     curr_table: &Table,
-) -> (Vec<DeltaEntry>, Vec<DeltaEntry>, Vec<DeltaEntry>) {
+) -> (Vec<Entry>, Vec<Entry>, Vec<Entry>) {
     let mut inserts = Vec::new();
     let mut deletes = Vec::new();
     let mut updates = Vec::new();
 
     let Some(prev_table) = prev_table else {
         // No previous table: all rows are inserts
-        let inserts = curr_table.rows.iter().map(row_to_entry).collect();
+        let inserts = curr_table.rows.iter().cloned().collect();
         return (inserts, deletes, updates);
     };
 
@@ -28,7 +22,7 @@ fn compute_table_delta(
     // Keys in previous but not current -> deletes
     for (k, v) in &prev_map {
         if !curr_map.contains_key(k) {
-            deletes.push(DeltaEntry {
+            deletes.push(Entry {
                 key: (*k).clone(),
                 value: (*v).clone(),
             });
@@ -40,13 +34,13 @@ fn compute_table_delta(
     for (k, v) in &curr_map {
         match prev_map.get(k) {
             None => {
-                inserts.push(DeltaEntry {
+                inserts.push(Entry {
                     key: (*k).clone(),
                     value: (*v).clone(),
                 });
             }
             Some(prev_value) if prev_value != v => {
-                updates.push(DeltaEntry {
+                updates.push(Entry {
                     key: (*k).clone(),
                     value: (*v).clone(),
                 });
@@ -81,7 +75,7 @@ pub fn compute_delta(previous_state: Option<State>, current_state: &State) -> Ve
     if let Some(ref previous) = previous_state {
         for (table_name, table) in &previous.tables {
             if !current_state.tables.contains_key(table_name) {
-                let deletes = table.rows.iter().map(row_to_entry).collect();
+                let deletes = table.rows.iter().cloned().collect();
 
                 deltas.push(Delta {
                     name: table_name.clone(),
@@ -98,16 +92,18 @@ pub fn compute_delta(previous_state: Option<State>, current_state: &State) -> Ve
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+
     use super::*;
 
-    fn make_row(key: &[&str], value: &[&str]) -> Row {
-        Row {
+    fn make_row(key: &[&str], value: &[&str]) -> Entry {
+        Entry {
             key: key.iter().map(|s| s.to_string()).collect(),
             value: value.iter().map(|s| s.to_string()).collect(),
         }
     }
 
-    fn make_table(rows: Vec<Row>) -> Table {
+    fn make_table(rows: Vec<Entry>) -> Table {
         Table {
             fields: vec![],
             primary_key: vec![],
@@ -119,7 +115,7 @@ mod tests {
         deltas.iter().find(|d| d.name == name)
     }
 
-    fn has_entry(entries: &[DeltaEntry], key: &[&str]) -> bool {
+    fn has_entry(entries: &[Entry], key: &[&str]) -> bool {
         let key_vec: Vec<String> = key.iter().map(|s| s.to_string()).collect();
         entries.iter().any(|e| e.key == key_vec)
     }

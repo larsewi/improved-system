@@ -5,7 +5,8 @@ use prost::Message;
 
 use crate::config::{self, TableConfig};
 
-pub use crate::table::{Row, State, Table};
+pub use crate::entry::Entry;
+pub use crate::table::{State, Table};
 
 pub fn load_previous_state() -> Result<Option<State>, Box<dyn std::error::Error>> {
     let cfg = config::get_config()?;
@@ -85,9 +86,9 @@ pub fn load_current_state() -> Result<State, Box<dyn std::error::Error>> {
             table_data.len()
         );
 
-        let rows: Vec<Row> = table_data
+        let rows: Vec<Entry> = table_data
             .into_iter()
-            .map(|(pk, sub)| Row { key: pk, value: sub })
+            .map(|(pk, sub)| Entry { key: pk, value: sub })
             .collect();
 
         all_tables.insert(

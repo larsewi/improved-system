@@ -3,6 +3,8 @@ use std::ffi::{c_char, CStr};
 pub mod block;
 mod config;
 mod delta;
+pub mod entry;
+mod proto;
 pub mod state;
 mod storage;
 pub mod table;
