@@ -64,4 +64,23 @@ mod tests {
         let timestamp = result.unwrap();
         assert!(timestamp > 1577836800, "timestamp should be after 2020");
     }
+
+    #[test]
+    fn test_encode_block() {
+        let block = Block {
+            version: 1,
+            timestamp: 1700000000,
+            parent: "abc123".to_string(),
+        };
+        let result = encode_block(&block);
+        assert!(result.is_ok());
+        let encoded = result.unwrap();
+        assert!(!encoded.is_empty());
+
+        // Verify roundtrip: decode should produce the same block
+        let decoded = Block::decode(encoded.as_slice()).unwrap();
+        assert_eq!(decoded.version, block.version);
+        assert_eq!(decoded.timestamp, block.timestamp);
+        assert_eq!(decoded.parent, block.parent);
+    }
 }
