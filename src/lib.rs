@@ -44,3 +44,24 @@ pub extern "C" fn isys_commit() -> i32 {
         }
     }
 }
+
+#[unsafe(no_mangle)]
+pub extern "C" fn isys_diff(hash: *const c_char, squash: i32) -> i32 {
+    if hash.is_null() {
+        log::error!("isys_diff(): Bad argument: hash cannot be NULL");
+        return -1;
+    }
+
+    let _hash = match unsafe { CStr::from_ptr(hash) }.to_str() {
+        Ok(hash) => hash,
+        Err(e) => {
+            log::error!("isys_diff(): Bad argument: {e}");
+            return -1;
+        }
+    };
+
+    let _squash = squash != 0;
+
+    // TODO: Implement diff logic
+    0
+}
