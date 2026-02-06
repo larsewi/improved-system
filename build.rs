@@ -6,6 +6,7 @@ fn main() {
             "proto/entry.proto",
             "proto/state.proto",
             "proto/table.proto",
+            "proto/update.proto",
         ],
         &["proto/"],
     )

@@ -3,6 +3,7 @@ pub use crate::proto::delta::Delta;
 use crate::entry::Entry;
 use crate::state::State;
 use crate::table::{Table, table_to_map};
+use crate::update::Update;
 
 pub fn merge_deltas(_parent: &mut Delta, _current: Delta) {
     // TODO: Implement merge logic
@@ -12,7 +13,7 @@ pub fn merge_deltas(_parent: &mut Delta, _current: Delta) {
 fn compute_table_delta(
     prev_table: Option<&Table>,
     curr_table: &Table,
-) -> (Vec<Entry>, Vec<Entry>, Vec<Entry>) {
+) -> (Vec<Entry>, Vec<Entry>, Vec<Update>) {
     let mut inserts = Vec::new();
     let mut deletes = Vec::new();
     let mut updates = Vec::new();
@@ -47,9 +48,10 @@ fn compute_table_delta(
                 });
             }
             Some(prev_value) if prev_value != v => {
-                updates.push(Entry {
+                updates.push(Update {
                     key: (*k).clone(),
-                    value: (*v).clone(),
+                    old_value: (*prev_value).clone(),
+                    new_value: (*v).clone(),
                 });
             }
             _ => {} // Same value, skip
@@ -137,6 +139,11 @@ mod tests {
     fn has_entry(entries: &[Entry], key: &[&str]) -> bool {
         let key_vec: Vec<String> = key.iter().map(|s| s.to_string()).collect();
         entries.iter().any(|e| e.key == key_vec)
+    }
+
+    fn has_update(updates: &[Update], key: &[&str]) -> bool {
+        let key_vec: Vec<String> = key.iter().map(|s| s.to_string()).collect();
+        updates.iter().any(|u| u.key == key_vec)
     }
 
     #[test]
@@ -230,7 +237,7 @@ mod tests {
         // Key "1" changed value -> update
         // Key "3" has same value -> skipped
         assert_eq!(delta.updates.len(), 1);
-        assert!(has_entry(&delta.updates, &["1"]));
+        assert!(has_update(&delta.updates, &["1"]));
     }
 
     #[test]
@@ -372,6 +379,6 @@ mod tests {
         assert_eq!(delta.deletes.len(), 1);
         assert!(has_entry(&delta.deletes, &["user1", "order2"]));
         assert_eq!(delta.updates.len(), 1);
-        assert!(has_entry(&delta.updates, &["user1", "order1"]));
+        assert!(has_update(&delta.updates, &["user1", "order1"]));
     }
 }

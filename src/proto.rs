@@ -10,6 +10,9 @@ pub mod delta {
 pub mod state {
     include!(concat!(env!("OUT_DIR"), "/state.rs"));
 }
+pub mod update {
+    include!(concat!(env!("OUT_DIR"), "/update.rs"));
+}
 pub mod block {
     include!(concat!(env!("OUT_DIR"), "/block.rs"));
 }
