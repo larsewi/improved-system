@@ -4,6 +4,11 @@ use crate::entry::Entry;
 use crate::state::State;
 use crate::table::{Table, table_to_map};
 
+pub fn merge_deltas(_parent: &mut Delta, _current: &Delta) {
+    // TODO: Implement merge logic
+    log::debug!("merge_deltas()");
+}
+
 fn compute_table_delta(
     prev_table: Option<&Table>,
     curr_table: &Table,
