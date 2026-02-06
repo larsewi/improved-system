@@ -14,7 +14,7 @@ pub fn diff(final_hash: &str) -> Result<(), Box<dyn std::error::Error>> {
         let parent_hash = block.parent.clone();
 
         current_block = Some(match current_block {
-            Some(prev) => squash::squash(prev, block)?,
+            Some(prev) => squash::squash(block, prev)?,
             None => block,
         });
 
