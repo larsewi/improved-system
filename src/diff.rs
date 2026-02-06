@@ -21,5 +21,11 @@ pub fn diff(final_hash: &str) -> Result<(), Box<dyn std::error::Error>> {
         current_hash = parent_hash;
     }
 
+    log::info!("Reached final block '{:.7}...'", current_hash);
+
+    if !current_hash.starts_with(final_hash) {
+        return Err(format!("Block starting with '{}' not found in chain", final_hash).into());
+    }
+
     Ok(())
 }
