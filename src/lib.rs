@@ -11,16 +11,16 @@ mod storage;
 pub mod table;
 
 #[unsafe(no_mangle)]
-pub extern "C" fn isys_init(work_dir: *const c_char) -> i32 {
+pub extern "C" fn lch_init(work_dir: *const c_char) -> i32 {
     if work_dir.is_null() {
-        log::error!("isys_commit(): Bad argument: work directory cannot be NULL");
+        log::error!("lch_commit(): Bad argument: work directory cannot be NULL");
         return -1;
     }
 
     let path = match unsafe { CStr::from_ptr(work_dir) }.to_str() {
         Ok(path) => path,
         Err(e) => {
-            log::error!("isys_commit(): Bad argument: {e}");
+            log::error!("lch_commit(): Bad argument: {e}");
             return -1;
         }
     };
@@ -28,34 +28,34 @@ pub extern "C" fn isys_init(work_dir: *const c_char) -> i32 {
     match config::init(&PathBuf::from(path)) {
         Ok(_) => 0,
         Err(e) => {
-            log::error!("isys_commit(): {}", e);
+            log::error!("lch_commit(): {}", e);
             -1
         }
     }
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn isys_commit() -> i32 {
+pub extern "C" fn lch_commit() -> i32 {
     match block::commit() {
         Ok(_) => 0,
         Err(e) => {
-            log::error!("isys_commit(): {}", e);
+            log::error!("lch_commit(): {}", e);
             -1
         }
     }
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn isys_diff(hash: *const c_char, squash: i32) -> i32 {
+pub extern "C" fn lch_diff(hash: *const c_char, squash: i32) -> i32 {
     if hash.is_null() {
-        log::error!("isys_diff(): Bad argument: hash cannot be NULL");
+        log::error!("lch_diff(): Bad argument: hash cannot be NULL");
         return -1;
     }
 
     let _hash = match unsafe { CStr::from_ptr(hash) }.to_str() {
         Ok(hash) => hash,
         Err(e) => {
-            log::error!("isys_diff(): Bad argument: {e}");
+            log::error!("lch_diff(): Bad argument: {e}");
             return -1;
         }
     };

@@ -257,21 +257,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
 
 [[package]]
-name = "improved-system"
-version = "0.1.0"
-dependencies = [
- "csv",
- "env_logger",
- "log",
- "prost",
- "prost-build",
- "prost-types",
- "serde",
- "sha1",
- "toml",
-]
-
-[[package]]
 name = "indexmap"
 version = "2.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -324,6 +309,21 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "leech2"
+version = "0.1.0"
+dependencies = [
+ "csv",
+ "env_logger",
+ "log",
+ "prost",
+ "prost-build",
+ "prost-types",
+ "serde",
+ "sha1",
+ "toml",
 ]
 
 [[package]]
