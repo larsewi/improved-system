@@ -5,6 +5,6 @@
 
 extern int lch_init(const char *work_dir);
 extern int lch_commit(void);
-extern int lch_diff(const char *block, int flags);
+extern int lch_diff(const char *block);
 
 #endif /* __LEECH2_H__ */

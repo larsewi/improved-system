@@ -1,5 +1,5 @@
-pub fn diff(block: &str, squash: bool) -> Result<(), Box<dyn std::error::Error>> {
+pub fn diff(block: &str) -> Result<(), Box<dyn std::error::Error>> {
     // TODO: Implement diff logic
-    log::debug!("diff(block={}, squash={})", block, squash);
+    log::debug!("diff(block={})", block);
     Ok(())
 }

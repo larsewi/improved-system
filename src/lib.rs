@@ -47,7 +47,7 @@ pub extern "C" fn lch_commit() -> i32 {
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn lch_diff(block: *const c_char, flags: i32) -> i32 {
+pub extern "C" fn lch_diff(block: *const c_char) -> i32 {
     if block.is_null() {
         log::error!("lch_diff(): Bad argument: block hash cannot be NULL");
         return -1;
@@ -61,9 +61,7 @@ pub extern "C" fn lch_diff(block: *const c_char, flags: i32) -> i32 {
         }
     };
 
-    let squash = flags & 1 != 0;
-
-    match diff::diff(hash, squash) {
+    match diff::diff(hash) {
         Ok(_) => 0,
         Err(e) => {
             log::error!("lch_diff(): {}", e);
