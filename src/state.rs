@@ -3,9 +3,36 @@ use std::collections::HashMap;
 use prost::Message;
 
 use crate::config;
-use crate::table::{Table, load_table};
+use crate::table::{load_table, Table};
 
-pub use crate::proto::state::State;
+/// State represents a snapshot of all tables at a point in time.
+#[derive(Debug, Clone, PartialEq)]
+pub struct State {
+    /// Map from table name to table contents.
+    pub tables: HashMap<String, Table>,
+}
+
+impl From<crate::proto::state::State> for State {
+    fn from(proto: crate::proto::state::State) -> Self {
+        let tables = proto
+            .tables
+            .into_iter()
+            .map(|(name, table)| (name, Table::from(table)))
+            .collect();
+        State { tables }
+    }
+}
+
+impl From<State> for crate::proto::state::State {
+    fn from(state: State) -> Self {
+        let tables = state
+            .tables
+            .into_iter()
+            .map(|(name, table)| (name, crate::proto::table::Table::from(table)))
+            .collect();
+        crate::proto::state::State { tables }
+    }
+}
 
 pub fn load_previous_state() -> Result<Option<State>, Box<dyn std::error::Error>> {
     let config = config::get_config()?;
@@ -18,7 +45,8 @@ pub fn load_previous_state() -> Result<Option<State>, Box<dyn std::error::Error>
     log::debug!("Parsing previous state from file '{}'...", path.display());
 
     let data = std::fs::read(&path)?;
-    let state = State::decode(data.as_slice())?;
+    let proto_state = crate::proto::state::State::decode(data.as_slice())?;
+    let state = State::from(proto_state);
     log::debug!("{:#?}", state);
     log::info!("Loaded previous state with {} tables", state.tables.len());
     Ok(Some(state))
@@ -44,8 +72,9 @@ pub fn save_state(state: &State) -> Result<(), Box<dyn std::error::Error>> {
     let path = config.work_dir.join("previous_state");
     log::debug!("Storing current state in file '{}'...", path.display());
 
+    let proto_state = crate::proto::state::State::from(state.clone());
     let mut buf = Vec::new();
-    state.encode(&mut buf)?;
+    proto_state.encode(&mut buf)?;
     std::fs::write(&path, &buf)?;
     log::info!(
         "Updated previous state to current state with {} tables",

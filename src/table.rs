@@ -4,15 +4,45 @@ use std::fs::File;
 use crate::config::{self, TableConfig};
 use crate::entry::Entry;
 
-pub use crate::proto::table::Table;
+/// A table with records stored in a hash map for efficient lookup.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Table {
+    /// The names of all columns in the table.
+    pub fields: Vec<String>,
+    /// The names of columns that form the primary key.
+    pub primary_key: Vec<String>,
+    /// Map from primary key values to subsidiary values.
+    pub records: HashMap<Vec<String>, Vec<String>>,
+}
 
-/// Builds a map from primary key to subsidiary value for all rows in a table.
-pub fn table_to_map(table: &Table) -> HashMap<&Vec<String>, &Vec<String>> {
-    table
-        .rows
-        .iter()
-        .map(|row| (&row.key, &row.value))
-        .collect()
+impl From<crate::proto::table::Table> for Table {
+    fn from(proto: crate::proto::table::Table) -> Self {
+        let records = proto
+            .rows
+            .into_iter()
+            .map(|entry| (entry.key, entry.value))
+            .collect();
+        Table {
+            fields: proto.fields,
+            primary_key: proto.primary_key,
+            records,
+        }
+    }
+}
+
+impl From<Table> for crate::proto::table::Table {
+    fn from(table: Table) -> Self {
+        let rows = table
+            .records
+            .into_iter()
+            .map(|(key, value)| Entry { key, value })
+            .collect();
+        crate::proto::table::Table {
+            fields: table.fields,
+            primary_key: table.primary_key,
+            rows,
+        }
+    }
 }
 
 fn parse_csv(
@@ -64,21 +94,13 @@ pub fn load_table(name: &str, config: &TableConfig) -> Result<Table, Box<dyn std
         .from_reader(file);
 
     log::debug!("Parsing csv file '{}'...", path.display());
-    let table_data = parse_csv(config, reader)?;
+    let records = parse_csv(config, reader)?;
 
-    let rows: Vec<Entry> = table_data
-        .into_iter()
-        .map(|(pk, sub)| Entry {
-            key: pk,
-            value: sub,
-        })
-        .collect();
-
-    log::info!("Loaded table '{}' with {} records", name, rows.len());
+    log::info!("Loaded table '{}' with {} records", name, records.len());
 
     Ok(Table {
         fields: config.field_names.clone(),
         primary_key: config.primary_key.clone(),
-        rows,
+        records,
     })
 }

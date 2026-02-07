@@ -2,7 +2,7 @@ pub use crate::proto::delta::Delta;
 
 use crate::entry::Entry;
 use crate::state::State;
-use crate::table::{Table, table_to_map};
+use crate::table::Table;
 use crate::update::Update;
 
 pub fn merge_deltas(_parent: &mut Delta, mut _current: Delta) {
@@ -19,39 +19,43 @@ fn compute_table_delta(
     let mut updates = Vec::new();
 
     let Some(prev_table) = prev_table else {
-        // No previous table: all rows are inserts
-        let inserts = curr_table.rows.iter().cloned().collect();
+        // No previous table: all records are inserts
+        let inserts = curr_table
+            .records
+            .iter()
+            .map(|(k, v)| Entry {
+                key: k.clone(),
+                value: v.clone(),
+            })
+            .collect();
         return (inserts, deletes, updates);
     };
 
-    let prev_map = table_to_map(prev_table);
-    let curr_map = table_to_map(curr_table);
-
     // Keys in previous but not current -> deletes
-    for (k, v) in &prev_map {
-        if !curr_map.contains_key(k) {
+    for (k, v) in &prev_table.records {
+        if !curr_table.records.contains_key(k) {
             deletes.push(Entry {
-                key: (*k).clone(),
-                value: (*v).clone(),
+                key: k.clone(),
+                value: v.clone(),
             });
         }
     }
 
     // Keys in current but not previous -> inserts
     // Keys in both with different values -> updates
-    for (k, v) in &curr_map {
-        match prev_map.get(k) {
+    for (k, v) in &curr_table.records {
+        match prev_table.records.get(k) {
             None => {
                 inserts.push(Entry {
-                    key: (*k).clone(),
-                    value: (*v).clone(),
+                    key: k.clone(),
+                    value: v.clone(),
                 });
             }
             Some(prev_value) if prev_value != v => {
                 updates.push(Update {
-                    key: (*k).clone(),
-                    old_value: (*prev_value).clone(),
-                    new_value: (*v).clone(),
+                    key: k.clone(),
+                    old_value: prev_value.clone(),
+                    new_value: v.clone(),
                 });
             }
             _ => {} // Same value, skip
@@ -85,11 +89,11 @@ pub fn compute_delta(previous_state: Option<State>, current_state: &State) -> Ve
         });
     }
 
-    // Tables only in previous state: all rows are deletes
+    // Tables only in previous state: all records are deletes
     if let Some(ref previous) = previous_state {
         for (table_name, table) in &previous.tables {
             // Skip empty tables
-            if table.rows.is_empty() {
+            if table.records.is_empty() {
                 continue;
             }
 
@@ -98,11 +102,18 @@ pub fn compute_delta(previous_state: Option<State>, current_state: &State) -> Ve
                 continue;
             }
 
-            let deletes = table.rows.iter().cloned().collect();
+            let deletes = table
+                .records
+                .iter()
+                .map(|(k, v)| Entry {
+                    key: k.clone(),
+                    value: v.clone(),
+                })
+                .collect();
             deltas.push(Delta {
                 name: table_name.clone(),
                 inserts: Vec::new(),
-                deletes: deletes,
+                deletes,
                 updates: Vec::new(),
             });
         }
@@ -125,10 +136,11 @@ mod tests {
     }
 
     fn make_table(rows: Vec<Entry>) -> Table {
+        let records = rows.into_iter().map(|e| (e.key, e.value)).collect();
         Table {
             fields: vec![],
             primary_key: vec![],
-            rows,
+            records,
         }
     }
 
