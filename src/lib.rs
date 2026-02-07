@@ -6,6 +6,7 @@ mod config;
 pub mod delta;
 mod diff;
 pub mod entry;
+mod head;
 mod proto;
 pub mod state;
 mod storage;

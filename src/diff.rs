@@ -1,11 +1,12 @@
 use crate::block::{self, Block};
+use crate::head;
 use crate::storage;
 
 pub fn diff(final_hash: &str) -> Result<(), Box<dyn std::error::Error>> {
     log::debug!("diff(block={})", final_hash);
 
     let genesis = "0".repeat(40);
-    let mut current_hash = storage::read_head()?;
+    let mut current_hash = head::load()?;
     let mut current_block: Option<Block> = None;
 
     while current_hash != genesis && !current_hash.starts_with(final_hash) {

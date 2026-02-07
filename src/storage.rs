@@ -70,16 +70,6 @@ pub fn read_block(hash: &str) -> Result<Block, Box<dyn std::error::Error>> {
     Ok(block)
 }
 
-pub fn read_head() -> Result<String, String> {
-    let path = config::get_work_dir()?.join("HEAD");
-    log::debug!("Reading head from file '{}'", path.display());
-    let hash = fs::read_to_string(&path)
-        .map(|s| s.trim().to_string())
-        .unwrap_or_else(|_| "0".repeat(40));
-    log::info!("Current head is '{:.7}...'", hash,);
-    Ok(hash)
-}
-
 pub fn ensure_work_dir() -> Result<(), String> {
     let path = config::get_work_dir()?;
     fs::create_dir_all(&path).map_err(|e| {
@@ -102,13 +92,3 @@ pub fn write_block(hash: &str, data: &[u8]) -> Result<(), String> {
     Ok(())
 }
 
-pub fn write_head(hash: &str) -> Result<(), String> {
-    let path = config::get_work_dir()?.join("HEAD");
-    log::debug!("Writing head to file '{}'...", path.display());
-    let mut file = fs::File::create(&path)
-        .map_err(|e| format!("Failed to create HEAD file '{}': {}", path.display(), e))?;
-    file.write_all(hash.as_bytes())
-        .map_err(|e| format!("Failed to write HEAD file '{}': {}", path.display(), e))?;
-    log::info!("Updated head to '{:.7}...'", hash);
-    Ok(())
-}

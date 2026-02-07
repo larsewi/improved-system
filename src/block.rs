@@ -4,6 +4,7 @@ use prost::Message;
 use sha1::{Digest, Sha1};
 
 use crate::delta;
+use crate::head;
 use crate::state;
 use crate::storage;
 
@@ -64,7 +65,7 @@ pub fn commit() -> Result<String, Box<dyn std::error::Error>> {
         .collect();
 
     let timestamp = get_timestamp()?;
-    let parent = storage::read_head()?;
+    let parent = head::load()?;
 
     let block = Block {
         parent,
@@ -81,7 +82,7 @@ pub fn commit() -> Result<String, Box<dyn std::error::Error>> {
     storage::ensure_work_dir()?;
     storage::write_block(&hash, &buf)?;
 
-    storage::write_head(&hash)?;
+    head::save(&hash)?;
     current_state.save()?;
 
     Ok(hash)
