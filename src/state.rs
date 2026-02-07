@@ -6,6 +6,8 @@ use crate::config;
 use crate::storage;
 use crate::table::Table;
 
+const STATE_FILE: &str = "STATE";
+
 /// State represents a snapshot of all tables at a point in time.
 #[derive(Debug, Clone, PartialEq)]
 pub struct State {
@@ -37,7 +39,7 @@ impl From<State> for crate::proto::state::State {
 
 impl State {
     pub fn load() -> Result<Option<Self>, Box<dyn std::error::Error>> {
-        let Some(data) = storage::load("previous_state")? else {
+        let Some(data) = storage::load(STATE_FILE)? else {
             log::info!("No previous state found");
             return Ok(None);
         };
@@ -68,7 +70,7 @@ impl State {
         let proto_state = crate::proto::state::State::from(self.clone());
         let mut buf = Vec::new();
         proto_state.encode(&mut buf)?;
-        storage::save("previous_state", &buf)?;
+        storage::save(STATE_FILE, &buf)?;
         log::info!(
             "Updated previous state to current state with {} tables",
             self.tables.len()
