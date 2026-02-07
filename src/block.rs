@@ -35,8 +35,7 @@ impl Block {
 
         log::info!("Created block '{:.7}...'", hash);
 
-        storage::ensure_work_dir()?;
-        storage::write_block(&hash, &buf)?;
+        storage::save(&hash, &buf)?;
 
         head::save(&hash)?;
         current_state.save()?;

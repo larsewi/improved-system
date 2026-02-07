@@ -70,25 +70,4 @@ pub fn read_block(hash: &str) -> Result<Block, Box<dyn std::error::Error>> {
     Ok(block)
 }
 
-pub fn ensure_work_dir() -> Result<(), String> {
-    let path = &config::Config::get()?.work_dir;
-    fs::create_dir_all(path).map_err(|e| {
-        format!(
-            "Failed to create work directory '{}': {}",
-            path.display(),
-            e
-        )
-    })
-}
-
-pub fn write_block(hash: &str, data: &[u8]) -> Result<(), String> {
-    let path = config::Config::get()?.work_dir.join(hash);
-    log::debug!("Writing block to file '{}'...", path.display());
-    let mut file = fs::File::create(&path)
-        .map_err(|e| format!("Failed to create block file '{}': {}", path.display(), e))?;
-    file.write_all(data)
-        .map_err(|e| format!("Failed to write block '{}': {}", path.display(), e))?;
-    log::info!("Stored block '{:.7}...'", hash);
-    Ok(())
-}
 
