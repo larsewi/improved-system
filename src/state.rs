@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use prost::Message;
 
 use crate::config;
+use crate::storage;
 use crate::table::Table;
 
 /// State represents a snapshot of all tables at a point in time.
@@ -36,16 +37,11 @@ impl From<State> for crate::proto::state::State {
 
 impl State {
     pub fn load() -> Result<Option<Self>, Box<dyn std::error::Error>> {
-        let config = config::get_config()?;
-        let path = config.work_dir.join("previous_state");
-        if !path.exists() {
+        let Some(data) = storage::load("previous_state")? else {
             log::info!("No previous state found");
             return Ok(None);
-        }
+        };
 
-        log::debug!("Parsing previous state from file '{}'...", path.display());
-
-        let data = std::fs::read(&path)?;
         let proto_state = crate::proto::state::State::decode(data.as_slice())?;
         let state = State::from(proto_state);
         log::debug!("{:#?}", state);
@@ -69,14 +65,10 @@ impl State {
     }
 
     pub fn save(&self) -> Result<(), Box<dyn std::error::Error>> {
-        let config = config::get_config()?;
-        let path = config.work_dir.join("previous_state");
-        log::debug!("Storing current state in file '{}'...", path.display());
-
         let proto_state = crate::proto::state::State::from(self.clone());
         let mut buf = Vec::new();
         proto_state.encode(&mut buf)?;
-        std::fs::write(&path, &buf)?;
+        storage::store("previous_state", &buf)?;
         log::info!(
             "Updated previous state to current state with {} tables",
             self.tables.len()
