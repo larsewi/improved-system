@@ -36,25 +36,25 @@ impl Config {
             .map(|c| &c.tables)
             .ok_or_else(|| "config not initialized".to_string())
     }
-}
 
-fn load_config(work_dir: &Path) -> Result<Config, String> {
-    let path = work_dir.join("config.toml");
-    log::debug!("Parsing config from file '{}'...", path.display());
-    let content =
-        fs::read_to_string(&path).map_err(|e| format!("failed to read config file: {}", e))?;
-    let mut config: Config =
-        toml::from_str(&content).map_err(|e| format!("failed to parse config: {}", e))?;
-    config.work_dir = work_dir.to_path_buf();
-    log::debug!("{:#?}", config);
-    Ok(config)
+    fn load(work_dir: &Path) -> Result<Config, String> {
+        let path = work_dir.join("config.toml");
+        log::debug!("Parsing config from file '{}'...", path.display());
+        let content =
+            fs::read_to_string(&path).map_err(|e| format!("failed to read config file: {}", e))?;
+        let mut config: Config =
+            toml::from_str(&content).map_err(|e| format!("failed to parse config: {}", e))?;
+        config.work_dir = work_dir.to_path_buf();
+        log::debug!("{:#?}", config);
+        Ok(config)
+    }
 }
 
 pub fn init(work_dir: &Path) -> Result<(), String> {
     env_logger::init();
     log::debug!("init(work_dir={})", work_dir.display());
 
-    let config = load_config(work_dir)?;
+    let config = Config::load(work_dir)?;
     log::info!("Initialized config with {} tables", config.tables.len());
     CONFIG
         .set(config)
