@@ -56,7 +56,7 @@ pub fn commit() -> Result<String, Box<dyn std::error::Error>> {
     log::debug!("commit()");
 
     let previous_state = state::State::load()?;
-    let current_state = state::State::compute_current()?;
+    let current_state = state::State::compute()?;
     let deltas = delta::Delta::compute(previous_state, &current_state);
     let payload = deltas
         .into_iter()
