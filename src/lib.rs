@@ -12,6 +12,7 @@ pub mod state;
 mod storage;
 pub mod table;
 pub mod update;
+mod utils;
 
 #[unsafe(no_mangle)]
 pub extern "C" fn lch_init(work_dir: *const c_char) -> i32 {
