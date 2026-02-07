@@ -53,7 +53,7 @@ impl State {
         Ok(Some(state))
     }
 
-    pub fn load_current() -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn compute_current() -> Result<Self, Box<dyn std::error::Error>> {
         let config = config::get_config()?;
         let mut tables: HashMap<String, Table> = HashMap::new();
 
