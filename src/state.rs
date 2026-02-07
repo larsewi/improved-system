@@ -46,8 +46,8 @@ impl State {
 
         let proto_state = crate::proto::state::State::decode(data.as_slice())?;
         let state = State::from(proto_state);
-        log::debug!("{:#?}", state);
         log::info!("Loaded previous state with {} tables", state.tables.len());
+        log::debug!("{:#?}", state);
         Ok(Some(state))
     }
 
