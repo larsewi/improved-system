@@ -51,18 +51,18 @@ impl Block {
     ) -> Result<Block, Box<dyn std::error::Error>> {
         log::debug!("Block::merge()");
 
-        for current_delta in other.payload.drain(..) {
-            if let Some(parent_delta) = self
+        for other_delta in other.payload.drain(..) {
+            if let Some(self_delta) = self
                 .payload
                 .iter_mut()
-                .find(|d| d.name == current_delta.name)
+                .find(|d| d.name == other_delta.name)
             {
-                let mut parent_domain: delta::Delta = std::mem::take(parent_delta).into();
-                let current_domain: delta::Delta = current_delta.into();
-                parent_domain.merge(current_domain);
-                *parent_delta = parent_domain.into();
+                let mut self_domain: delta::Delta = std::mem::take(self_delta).into();
+                let other_domain: delta::Delta = other_delta.into();
+                self_domain.merge(other_domain);
+                *self_delta = self_domain.into();
             } else {
-                self.payload.push(current_delta);
+                self.payload.push(other_delta);
             }
         }
 
