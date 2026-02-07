@@ -35,7 +35,7 @@ impl From<State> for crate::proto::state::State {
 }
 
 impl State {
-    pub fn load_previous() -> Result<Option<Self>, Box<dyn std::error::Error>> {
+    pub fn load() -> Result<Option<Self>, Box<dyn std::error::Error>> {
         let config = config::get_config()?;
         let path = config.work_dir.join("previous_state");
         if !path.exists() {
