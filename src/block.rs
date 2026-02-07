@@ -82,7 +82,7 @@ pub fn commit() -> Result<String, Box<dyn std::error::Error>> {
     storage::write_block(&hash, &buf)?;
 
     storage::write_head(&hash)?;
-    state::save_state(&current_state)?;
+    current_state.save()?;
 
     Ok(hash)
 }

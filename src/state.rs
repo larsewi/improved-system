@@ -67,20 +67,20 @@ impl State {
         log::debug!("{:#?}", state);
         Ok(state)
     }
-}
 
-pub fn save_state(state: &State) -> Result<(), Box<dyn std::error::Error>> {
-    let config = config::get_config()?;
-    let path = config.work_dir.join("previous_state");
-    log::debug!("Storing current state in file '{}'...", path.display());
+    pub fn save(&self) -> Result<(), Box<dyn std::error::Error>> {
+        let config = config::get_config()?;
+        let path = config.work_dir.join("previous_state");
+        log::debug!("Storing current state in file '{}'...", path.display());
 
-    let proto_state = crate::proto::state::State::from(state.clone());
-    let mut buf = Vec::new();
-    proto_state.encode(&mut buf)?;
-    std::fs::write(&path, &buf)?;
-    log::info!(
-        "Updated previous state to current state with {} tables",
-        state.tables.len()
-    );
-    Ok(())
+        let proto_state = crate::proto::state::State::from(self.clone());
+        let mut buf = Vec::new();
+        proto_state.encode(&mut buf)?;
+        std::fs::write(&path, &buf)?;
+        log::info!(
+            "Updated previous state to current state with {} tables",
+            self.tables.len()
+        );
+        Ok(())
+    }
 }
