@@ -80,75 +80,95 @@ impl Delta {
     /// DELTA_MERGING_RULES.md for the full specification of the 15 rules.
 
     pub fn merge(&mut self, other: Delta) -> Result<(), Box<dyn std::error::Error>> {
-        // Process current inserts
-        for (key, other_insert_value) in other.inserts {
-            if self.inserts.contains_key(&key) {
-                // Rule 5: double insert → error
-                return Err(format!("Conflict: key {:?} inserted in both blocks", key).into());
-            } else if let Some(self_delete_value) = self.deletes.remove(&key) {
-                if self_delete_value == other_insert_value {
-                    // Rule 9a: delete then insert with same value → cancels out
-                } else {
-                    // Rule 9b: delete then insert with different value → update
-                    self.updates.insert(key, (self_delete_value, other_insert_value));
-                }
-            } else if self.updates.contains_key(&key) {
-                // Rule 13: insert after update → error
-                return Err(
-                    format!("Conflict: key {:?} updated in parent, inserted in current", key)
-                        .into(),
-                );
-            } else {
-                // Rule 1: pass through
-                self.inserts.insert(key, other_insert_value);
-            }
+        for (key, val) in other.inserts {
+            self.merge_insert(key, val)?;
         }
-
-        // Process current deletes
         for (key, val) in other.deletes {
-            if self.inserts.remove(&key).is_some() {
-                // Rule 6: insert then delete → cancels out
-            } else if self.deletes.contains_key(&key) {
-                // Rule 10: double delete → error
-                return Err(format!("Conflict: key {:?} deleted in both blocks", key).into());
-            } else if let Some((old, new_val)) = self.updates.remove(&key) {
-                if val == new_val {
-                    // Rule 14a: update then delete, values match → delete(old)
-                    self.deletes.insert(key, old);
-                } else {
-                    // Rule 14b: update then delete, values mismatch → error
-                    return Err(format!(
-                        "Conflict: key {:?} updated to {:?} in parent, but deleted with {:?}",
-                        key, new_val, val
-                    )
-                    .into());
-                }
-            } else {
-                // Rule 2: pass through
-                self.deletes.insert(key, val);
-            }
+            self.merge_delete(key, val)?;
         }
-
-        // Process current updates
-        for (key, (other_old, other_new)) in other.updates {
-            if let Some(insert_val) = self.inserts.get_mut(&key) {
-                // Rule 7: insert then update → insert(new_val)
-                *insert_val = other_new;
-            } else if self.deletes.contains_key(&key) {
-                // Rule 11: update after delete → error
-                return Err(
-                    format!("Conflict: key {:?} deleted in parent, updated in current", key)
-                        .into(),
-                );
-            } else if let Some(update) = self.updates.get_mut(&key) {
-                // Rule 15: update then update → update(old1 → new2)
-                update.1 = other_new;
-            } else {
-                // Rule 3: pass through
-                self.updates.insert(key, (other_old, other_new));
-            }
+        for (key, (old, new)) in other.updates {
+            self.merge_update(key, old, new)?;
         }
+        Ok(())
+    }
 
+    fn merge_insert(
+        &mut self,
+        key: Vec<String>,
+        val: Vec<String>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        if self.inserts.contains_key(&key) {
+            // Rule 5: double insert → error
+            return Err(format!("Conflict: key {:?} inserted in both blocks", key).into());
+        } else if let Some(del_val) = self.deletes.remove(&key) {
+            if del_val == val {
+                // Rule 9a: delete then insert with same value → cancels out
+            } else {
+                // Rule 9b: delete then insert with different value → update
+                self.updates.insert(key, (del_val, val));
+            }
+        } else if self.updates.contains_key(&key) {
+            // Rule 13: insert after update → error
+            return Err(
+                format!("Conflict: key {:?} updated in parent, inserted in current", key).into(),
+            );
+        } else {
+            // Rule 1: pass through
+            self.inserts.insert(key, val);
+        }
+        Ok(())
+    }
+
+    fn merge_delete(
+        &mut self,
+        key: Vec<String>,
+        val: Vec<String>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        if self.inserts.remove(&key).is_some() {
+            // Rule 6: insert then delete → cancels out
+        } else if self.deletes.contains_key(&key) {
+            // Rule 10: double delete → error
+            return Err(format!("Conflict: key {:?} deleted in both blocks", key).into());
+        } else if let Some((old, new_val)) = self.updates.remove(&key) {
+            if val == new_val {
+                // Rule 14a: update then delete, values match → delete(old)
+                self.deletes.insert(key, old);
+            } else {
+                // Rule 14b: update then delete, values mismatch → error
+                return Err(format!(
+                    "Conflict: key {:?} updated to {:?} in parent, but deleted with {:?}",
+                    key, new_val, val
+                )
+                .into());
+            }
+        } else {
+            // Rule 2: pass through
+            self.deletes.insert(key, val);
+        }
+        Ok(())
+    }
+
+    fn merge_update(
+        &mut self,
+        key: Vec<String>,
+        other_old: Vec<String>,
+        other_new: Vec<String>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        if let Some(insert_val) = self.inserts.get_mut(&key) {
+            // Rule 7: insert then update → insert(new_val)
+            *insert_val = other_new;
+        } else if self.deletes.contains_key(&key) {
+            // Rule 11: update after delete → error
+            return Err(
+                format!("Conflict: key {:?} deleted in parent, updated in current", key).into(),
+            );
+        } else if let Some(update) = self.updates.get_mut(&key) {
+            // Rule 15: update then update → update(old1 → new2)
+            update.1 = other_new;
+        } else {
+            // Rule 3: pass through
+            self.updates.insert(key, (other_old, other_new));
+        }
         Ok(())
     }
 
