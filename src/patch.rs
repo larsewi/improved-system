@@ -30,7 +30,11 @@ impl Patch {
         }
 
         if !current_hash.starts_with(last_known_hash) {
-            return Err(format!("Block starting with '{}' not found in chain", last_known_hash).into());
+            return Err(format!(
+                "Block starting with '{}' not found in chain",
+                last_known_hash
+            )
+            .into());
         }
 
         let patch = Patch {

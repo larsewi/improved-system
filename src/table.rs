@@ -55,7 +55,11 @@ impl Table {
         log::debug!("Parsing csv file '{}'...", path.display());
         let table = Self::parse_csv(config, reader)?;
 
-        log::info!("Loaded table '{}' with {} records", name, table.records.len());
+        log::info!(
+            "Loaded table '{}' with {} records",
+            name,
+            table.records.len()
+        );
 
         Ok(table)
     }
@@ -103,9 +107,6 @@ impl Table {
             records.insert(primary_key, subsidiary);
         }
 
-        Ok(Table {
-            fields,
-            records,
-        })
+        Ok(Table { fields, records })
     }
 }

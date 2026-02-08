@@ -8,14 +8,24 @@ use crate::config;
 /// Saves data to a file in the work directory with an exclusive lock.
 pub fn save(name: &str, data: &[u8]) -> Result<(), Box<dyn std::error::Error>> {
     let work_dir = &config::Config::get()?.work_dir;
-    fs::create_dir_all(work_dir)
-        .map_err(|e| format!("Failed to create work directory '{}': {}", work_dir.display(), e))?;
+    fs::create_dir_all(work_dir).map_err(|e| {
+        format!(
+            "Failed to create work directory '{}': {}",
+            work_dir.display(),
+            e
+        )
+    })?;
 
     let path = work_dir.join(name);
     let file = File::create(&path)
         .map_err(|e| format!("Failed to create file '{}': {}", path.display(), e))?;
-    file.lock_exclusive()
-        .map_err(|e| format!("Failed to acquire exclusive lock on '{}': {}", path.display(), e))?;
+    file.lock_exclusive().map_err(|e| {
+        format!(
+            "Failed to acquire exclusive lock on '{}': {}",
+            path.display(),
+            e
+        )
+    })?;
 
     (&file)
         .write_all(data)
@@ -38,8 +48,13 @@ pub fn load(name: &str) -> Result<Option<Vec<u8>>, Box<dyn std::error::Error>> {
 
     let file = File::open(&path)
         .map_err(|e| format!("Failed to open file '{}': {}", path.display(), e))?;
-    file.lock_shared()
-        .map_err(|e| format!("Failed to acquire shared lock on '{}': {}", path.display(), e))?;
+    file.lock_shared().map_err(|e| {
+        format!(
+            "Failed to acquire shared lock on '{}': {}",
+            path.display(),
+            e
+        )
+    })?;
 
     let mut data = Vec::new();
     (&file)

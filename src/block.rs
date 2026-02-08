@@ -10,8 +10,8 @@ pub use crate::proto::block::Block;
 
 impl Block {
     pub fn load(hash: &str) -> Result<Block, Box<dyn std::error::Error>> {
-        let data = storage::load(hash)?
-            .ok_or_else(|| format!("Block '{:.7}...' not found", hash))?;
+        let data =
+            storage::load(hash)?.ok_or_else(|| format!("Block '{:.7}...' not found", hash))?;
         let block = Block::decode(data.as_slice())
             .map_err(|e| format!("Failed to decode block '{:.7}...': {}", hash, e))?;
         log::info!("Loaded block '{:.7}...'", hash);
@@ -51,16 +51,9 @@ impl Block {
         Ok(hash)
     }
 
-    pub fn merge(
-        mut self,
-        mut other: Block,
-    ) -> Result<Block, Box<dyn std::error::Error>> {
+    pub fn merge(mut self, mut other: Block) -> Result<Block, Box<dyn std::error::Error>> {
         for other_delta in other.payload.drain(..) {
-            if let Some(self_delta) = self
-                .payload
-                .iter_mut()
-                .find(|d| d.name == other_delta.name)
-            {
+            if let Some(self_delta) = self.payload.iter_mut().find(|d| d.name == other_delta.name) {
                 let mut self_domain: delta::Delta = std::mem::take(self_delta).into();
                 let other_domain: delta::Delta = other_delta.into();
                 self_domain.merge(other_domain)?;
