@@ -22,14 +22,14 @@ impl Block {
         let previous_state = state::State::load()?;
         let current_state = state::State::compute()?;
 
+        let parent = head::load()?;
+        let timestamp = utils::get_timestamp()?;
+
         let deltas = delta::Delta::compute(previous_state, &current_state);
         let payload = deltas
             .into_iter()
             .map(crate::proto::delta::Delta::from)
             .collect();
-
-        let timestamp = utils::get_timestamp()?;
-        let parent = head::load()?;
 
         let block = Block {
             parent,
@@ -41,10 +41,9 @@ impl Block {
         let mut buf = Vec::new();
         block.encode(&mut buf)?;
         let hash = utils::compute_hash(&buf);
+        storage::save(&hash, &buf)?;
 
         log::info!("Created block '{:.7}...'", hash);
-
-        storage::save(&hash, &buf)?;
 
         head::save(&hash)?;
         current_state.save()?;

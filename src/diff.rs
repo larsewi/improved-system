@@ -3,8 +3,6 @@ use crate::head;
 use crate::utils::GENESIS_HASH;
 
 pub fn diff(final_hash: &str) -> Result<(), Box<dyn std::error::Error>> {
-    log::debug!("diff(block={})", final_hash);
-
     let mut current_hash = head::load()?;
     let mut current_block: Option<Block> = None;
 
