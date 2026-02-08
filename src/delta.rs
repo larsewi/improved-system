@@ -156,13 +156,13 @@ impl Delta {
 
         // Keys in current but not previous -> inserts
         // Keys in both with different values -> updates
-        for (key, value) in &current_table.records {
+        for (key, current_value) in &current_table.records {
             match previous_table.records.get(key) {
                 None => {
-                    inserts.insert(key.clone(), value.clone());
+                    inserts.insert(key.clone(), current_value.clone());
                 }
-                Some(prev_value) if prev_value != value => {
-                    updates.insert(key.clone(), (prev_value.clone(), value.clone()));
+                Some(previous_value) if previous_value != current_value => {
+                    updates.insert(key.clone(), (previous_value.clone(), current_value.clone()));
                 }
                 _ => {} // Same value, skip
             }
