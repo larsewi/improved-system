@@ -1,5 +1,7 @@
 pub use crate::proto::patch::Patch;
 
+use prost::Message;
+
 use crate::block::Block;
 use crate::head;
 use crate::proto::patch::patch::Payload;
@@ -55,11 +57,19 @@ impl Patch {
                 let (num_blocks, deltas) = consolidate(block, last_known_hash)?;
                 Ok((head_created, num_blocks, deltas))
             }) {
-                Ok((head_created, num_blocks, deltas)) => (
-                    head_created,
-                    num_blocks,
-                    Some(Payload::Deltas(Deltas { items: deltas })),
-                ),
+                Ok((head_created, num_blocks, deltas)) => {
+                    let deltas_payload = Deltas { items: deltas };
+                    let state = state::State::load()?;
+                    let proto_state = state.map(|s| crate::proto::state::State::from(s));
+
+                    match proto_state {
+                        Some(s) if s.encoded_len() < deltas_payload.encoded_len() => {
+                            log::info!("Using full state (smaller than consolidated deltas)");
+                            (head_created, num_blocks, Some(Payload::State(s)))
+                        }
+                        _ => (head_created, num_blocks, Some(Payload::Deltas(deltas_payload))),
+                    }
+                }
                 Err(e) => {
                     log::warn!("Consolidation failed, falling back to full state: {}", e);
                     let state = state::State::load()?
