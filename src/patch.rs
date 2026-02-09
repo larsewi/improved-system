@@ -45,9 +45,14 @@ fn load_state_payload() -> Result<Payload, Box<dyn std::error::Error>> {
 fn try_consolidate(
     head_hash: &str,
     last_known_hash: &str,
-) -> Result<(Option<Timestamp>, u32, Payload), Box<dyn std::error::Error>> {
+) -> Result<(Option<Timestamp>, u32, Option<Payload>), Box<dyn std::error::Error>> {
     let block = Block::load(head_hash)?;
     let head_created = block.created.clone();
+
+    if head_hash.starts_with(last_known_hash) {
+        return Ok((head_created, 0, None));
+    }
+
     let (num_blocks, deltas) = consolidate(block, last_known_hash)?;
 
     let deltas_payload = Deltas { items: deltas };
@@ -62,14 +67,14 @@ fn try_consolidate(
         _ => Payload::Deltas(deltas_payload),
     };
 
-    Ok((head_created, num_blocks, payload))
+    Ok((head_created, num_blocks, Some(payload)))
 }
 
 impl Patch {
     pub fn create(last_known_hash: &str) -> Result<Patch, Box<dyn std::error::Error>> {
         let head_hash = head::load()?;
 
-        if head_hash == GENESIS_HASH || head_hash.starts_with(last_known_hash) {
+        if head_hash == GENESIS_HASH {
             let patch = Patch {
                 head_hash,
                 head_created: None,
@@ -82,7 +87,7 @@ impl Patch {
 
         let (head_created, num_blocks, payload) = match try_consolidate(&head_hash, last_known_hash)
         {
-            Ok((head_created, num_blocks, payload)) => (head_created, num_blocks, Some(payload)),
+            Ok((head_created, num_blocks, payload)) => (head_created, num_blocks, payload),
             Err(e) => {
                 log::warn!("Consolidation failed, falling back to full state: {}", e);
                 (None, 0, Some(load_state_payload()?))
