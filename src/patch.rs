@@ -37,11 +37,6 @@ fn consolidate(
     Ok((num_blocks, current_block.payload))
 }
 
-fn load_state_payload() -> Result<Payload, Box<dyn std::error::Error>> {
-    let state = state::State::load()?.ok_or("No STATE file found")?;
-    Ok(Payload::State(crate::proto::state::State::from(state)))
-}
-
 fn try_consolidate(
     head_hash: &str,
     last_known_hash: &str,
@@ -90,7 +85,13 @@ impl Patch {
             Ok((head_created, num_blocks, payload)) => (head_created, num_blocks, payload),
             Err(e) => {
                 log::warn!("Consolidation failed, falling back to full state: {}", e);
-                (None, 0, Some(load_state_payload()?))
+                let state = state::State::load()?
+                    .ok_or("Consolidation failed and no STATE file found for fallback")?;
+                (
+                    None,
+                    0,
+                    Some(Payload::State(crate::proto::state::State::from(state))),
+                )
             }
         };
 
