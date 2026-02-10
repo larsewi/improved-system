@@ -37,7 +37,6 @@ impl Config {
         let mut config: Config =
             toml::from_str(&content).map_err(|e| format!("failed to parse config: {}", e))?;
         config.work_dir = work_dir.to_path_buf();
-        log::debug!("{:#?}", config);
         log::info!("Initialized config with {} tables", config.tables.len());
         CONFIG
             .set(config)
