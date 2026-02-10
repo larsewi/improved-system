@@ -1,4 +1,8 @@
 [tables.foo]
 source = "foo.csv"
-field-names = [ "foo", "bar", "baz", "qux" ]
-primary-key = [ "foo", "bar" ]
+fields = [
+    { name = "foo", type = "INTEGER", primary-key = true },
+    { name = "bar", type = "TEXT", primary-key = true },
+    { name = "baz", type = "BOOLEAN" },
+    { name = "qux", type = "FLOAT" },
+]

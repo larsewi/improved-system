@@ -80,17 +80,18 @@ impl Table {
         config: &TableConfig,
         reader: csv::Reader<File>,
     ) -> Result<Self, Box<dyn std::error::Error>> {
-        let primary_indices: Vec<usize> = config
-            .primary_key
+        let field_names = config.field_names();
+        let primary_key = config.primary_key();
+
+        let primary_indices: Vec<usize> = primary_key
             .iter()
-            .filter_map(|pk_col| config.field_names.iter().position(|c| c == pk_col))
+            .filter_map(|pk_col| field_names.iter().position(|c| c == pk_col))
             .collect();
 
-        let subsidiary_indices: Vec<usize> = config
-            .field_names
+        let subsidiary_indices: Vec<usize> = field_names
             .iter()
             .enumerate()
-            .filter(|(_, col)| !config.primary_key.contains(col))
+            .filter(|(_, col)| !primary_key.contains(col))
             .map(|(i, _)| i)
             .collect();
 
@@ -98,7 +99,7 @@ impl Table {
         let fields: Vec<String> = primary_indices
             .iter()
             .chain(subsidiary_indices.iter())
-            .map(|&i| config.field_names[i].clone())
+            .map(|&i| field_names[i].clone())
             .collect();
 
         let mut records: HashMap<Vec<Vec<u8>>, Vec<Vec<u8>>> = HashMap::new();

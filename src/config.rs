@@ -1,5 +1,5 @@
 use serde::Deserialize;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
@@ -12,12 +12,40 @@ pub struct Config {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct FieldConfig {
+    pub name: String,
+    #[serde(rename = "type", default = "default_field_type")]
+    pub field_type: String,
+    #[serde(rename = "primary-key", default)]
+    pub primary_key: bool,
+}
+
+fn default_field_type() -> String {
+    "TEXT".to_string()
+}
+
+#[derive(Debug, Deserialize)]
 pub struct TableConfig {
     pub source: String,
-    #[serde(rename = "field-names")]
-    pub field_names: Vec<String>,
-    #[serde(rename = "primary-key")]
-    pub primary_key: Vec<String>,
+    pub fields: Vec<FieldConfig>,
+}
+
+impl TableConfig {
+    pub fn field_names(&self) -> Vec<String> {
+        self.fields.iter().map(|f| f.name.clone()).collect()
+    }
+
+    pub fn primary_key(&self) -> Vec<String> {
+        self.fields
+            .iter()
+            .filter(|f| f.primary_key)
+            .map(|f| f.name.clone())
+            .collect()
+    }
+
+    pub fn field_types(&self) -> Vec<String> {
+        self.fields.iter().map(|f| f.field_type.clone()).collect()
+    }
 }
 
 static CONFIG: OnceLock<Config> = OnceLock::new();
@@ -37,6 +65,27 @@ impl Config {
         let mut config: Config =
             toml::from_str(&content).map_err(|e| format!("failed to parse config: {}", e))?;
         config.work_dir = work_dir.to_path_buf();
+
+        for (name, table) in &config.tables {
+            let pk_count = table.fields.iter().filter(|f| f.primary_key).count();
+            if pk_count == 0 {
+                return Err(format!(
+                    "table '{}': at least one field must be marked as primary-key",
+                    name
+                ));
+            }
+
+            let mut seen = HashSet::new();
+            for field in &table.fields {
+                if !seen.insert(&field.name) {
+                    return Err(format!(
+                        "table '{}': duplicate field name '{}'",
+                        name, field.name
+                    ));
+                }
+            }
+        }
+
         log::info!("Initialized config with {} tables", config.tables.len());
         CONFIG
             .set(config)
