@@ -41,6 +41,8 @@ The public API exposed to C callers:
 
 Proto definitions are in `proto/`. Code is generated at build time via `prost-build` (`build.rs`) into `OUT_DIR` and included via `src/proto.rs`. Domain types in `src/` have `From` impls to convert to/from their proto counterparts.
 
+**Note:** leech2 has not been released yet, so there are no backwards-compatibility constraints on the proto specs. Reusing or renumbering wire fields is perfectly fine.
+
 ### Work Directory Layout
 
 The work directory (passed to `lch_init`) contains:
