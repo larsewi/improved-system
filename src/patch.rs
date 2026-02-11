@@ -41,6 +41,40 @@ impl fmt::Display for Patch {
     }
 }
 
+fn validate_hash_prefix(prefix: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let config = crate::config::Config::get()?;
+    let work_dir = &config.work_dir;
+
+    let mut matches: Vec<String> = Vec::new();
+
+    if GENESIS_HASH.starts_with(prefix) {
+        matches.push(GENESIS_HASH.to_string());
+    }
+
+    for entry in std::fs::read_dir(work_dir)? {
+        let entry = entry?;
+        let name = entry.file_name();
+        let Some(name) = name.to_str() else {
+            continue;
+        };
+        if name.starts_with(prefix)
+            && name.len() == 40
+            && name.chars().all(|c| c.is_ascii_hexdigit())
+        {
+            matches.push(name.to_string());
+            if matches.len() > 1 {
+                return Err(format!(
+                    "ambiguous hash prefix '{}': matches {} and {}",
+                    prefix, matches[0], matches[1]
+                )
+                .into());
+            }
+        }
+    }
+
+    Ok(())
+}
+
 fn consolidate(
     head_block: Block,
     last_known_hash: &str,
@@ -98,6 +132,8 @@ fn try_consolidate(
 
 impl Patch {
     pub fn create(last_known_hash: &str) -> Result<Patch, Box<dyn std::error::Error>> {
+        validate_hash_prefix(last_known_hash)?;
+
         let head_hash = head::load()?;
 
         if head_hash == GENESIS_HASH {
