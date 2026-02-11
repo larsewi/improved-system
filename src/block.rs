@@ -63,8 +63,8 @@ impl Block {
 
         log::info!("Created block '{:.7}...'", hash);
 
-        head::save(&hash)?;
         current_state.save()?;
+        head::save(&hash)?;
 
         Ok(hash)
     }
