@@ -112,6 +112,14 @@ impl Delta {
     /// DELTA_MERGING_RULES.md for the full specification of the 15 rules.
 
     pub fn merge(&mut self, other: Delta) -> Result<(), Box<dyn std::error::Error>> {
+        if self.fields != other.fields {
+            return Err(format!(
+                "cannot merge deltas for table '{}': field mismatch ({:?} vs {:?})",
+                self.name, self.fields, other.fields
+            )
+            .into());
+        }
+
         for (key, val) in other.inserts {
             self.merge_insert(key, val)?;
         }
