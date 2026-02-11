@@ -88,9 +88,8 @@ fn quote_ident(name: &str) -> String {
     format!("\"{}\"", name.replace('"', "\"\""))
 }
 
-/// Format a raw byte value as a SQL literal based on its type.
-pub fn quote_literal(raw: &[u8], sql_type: &SqlType) -> Result<String, Box<dyn std::error::Error>> {
-    let s = std::str::from_utf8(raw)?;
+/// Format a value as a SQL literal based on its type.
+pub fn quote_literal(s: &str, sql_type: &SqlType) -> Result<String, Box<dyn std::error::Error>> {
     match sql_type {
         SqlType::Text => Ok(format!("'{}'", s.replace('\'', "''"))),
         SqlType::Integer => {
@@ -118,10 +117,10 @@ pub fn quote_literal(raw: &[u8], sql_type: &SqlType) -> Result<String, Box<dyn s
     }
 }
 
-/// Convert key + value byte slices into a list of SQL literal strings.
+/// Convert key + value slices into a list of SQL literal strings.
 fn format_row(
-    key: &[Vec<u8>],
-    value: &[Vec<u8>],
+    key: &[String],
+    value: &[String],
     schema: &TableSchema,
 ) -> Result<Vec<String>, Box<dyn std::error::Error>> {
     let pk_types = schema.pk_types();
@@ -145,13 +144,13 @@ fn format_row(
     }
 
     let mut literals = Vec::with_capacity(key.len() + value.len());
-    for (bytes, (name, sql_type)) in key.iter().zip(pk_types) {
-        let lit = quote_literal(bytes, sql_type)
+    for (val, (name, sql_type)) in key.iter().zip(pk_types) {
+        let lit = quote_literal(val, sql_type)
             .map_err(|e| format!("field '{}': {}", name, e))?;
         literals.push(lit);
     }
-    for (bytes, (name, sql_type)) in value.iter().zip(sub_types) {
-        let lit = quote_literal(bytes, sql_type)
+    for (val, (name, sql_type)) in value.iter().zip(sub_types) {
+        let lit = quote_literal(val, sql_type)
             .map_err(|e| format!("field '{}': {}", name, e))?;
         literals.push(lit);
     }
@@ -172,8 +171,8 @@ fn delta_to_sql(
             .key
             .iter()
             .zip(schema.pk_types())
-            .map(|(bytes, (name, sql_type))| {
-                let lit = quote_literal(bytes, sql_type)
+            .map(|(val, (name, sql_type))| {
+                let lit = quote_literal(val, sql_type)
                     .map_err(|e| format!("field '{}': {}", name, e))?;
                 Ok(format!("{} = {}", quote_ident(name), lit))
             })
@@ -212,8 +211,8 @@ fn delta_to_sql(
             .new_value
             .iter()
             .zip(schema.sub_types())
-            .map(|(bytes, (name, sql_type))| {
-                let lit = quote_literal(bytes, sql_type)
+            .map(|(val, (name, sql_type))| {
+                let lit = quote_literal(val, sql_type)
                     .map_err(|e| format!("field '{}': {}", name, e))?;
                 Ok(format!("{} = {}", quote_ident(name), lit))
             })
@@ -223,8 +222,8 @@ fn delta_to_sql(
             .key
             .iter()
             .zip(schema.pk_types())
-            .map(|(bytes, (name, sql_type))| {
-                let lit = quote_literal(bytes, sql_type)
+            .map(|(val, (name, sql_type))| {
+                let lit = quote_literal(val, sql_type)
                     .map_err(|e| format!("field '{}': {}", name, e))?;
                 Ok(format!("{} = {}", quote_ident(name), lit))
             })
@@ -348,11 +347,11 @@ mod tests {
     #[test]
     fn test_quote_literal_text() {
         assert_eq!(
-            quote_literal(b"hello", &SqlType::Text).unwrap(),
+            quote_literal("hello", &SqlType::Text).unwrap(),
             "'hello'"
         );
         assert_eq!(
-            quote_literal(b"", &SqlType::Text).unwrap(),
+            quote_literal("", &SqlType::Text).unwrap(),
             "''"
         );
     }
@@ -360,72 +359,66 @@ mod tests {
     #[test]
     fn test_quote_literal_text_with_quotes() {
         assert_eq!(
-            quote_literal(b"it's a test", &SqlType::Text).unwrap(),
+            quote_literal("it's a test", &SqlType::Text).unwrap(),
             "'it''s a test'"
         );
         assert_eq!(
-            quote_literal(b"a''b", &SqlType::Text).unwrap(),
+            quote_literal("a''b", &SqlType::Text).unwrap(),
             "'a''''b'"
         );
     }
 
     #[test]
     fn test_quote_literal_integer() {
-        assert_eq!(quote_literal(b"42", &SqlType::Integer).unwrap(), "42");
-        assert_eq!(quote_literal(b"-100", &SqlType::Integer).unwrap(), "-100");
-        assert!(quote_literal(b"not_a_number", &SqlType::Integer).is_err());
+        assert_eq!(quote_literal("42", &SqlType::Integer).unwrap(), "42");
+        assert_eq!(quote_literal("-100", &SqlType::Integer).unwrap(), "-100");
+        assert!(quote_literal("not_a_number", &SqlType::Integer).is_err());
     }
 
     #[test]
     fn test_quote_literal_float() {
-        assert_eq!(quote_literal(b"3.14", &SqlType::Float).unwrap(), "3.14");
-        assert_eq!(quote_literal(b"-0.5", &SqlType::Float).unwrap(), "-0.5");
-        assert!(quote_literal(b"not_a_float", &SqlType::Float).is_err());
+        assert_eq!(quote_literal("3.14", &SqlType::Float).unwrap(), "3.14");
+        assert_eq!(quote_literal("-0.5", &SqlType::Float).unwrap(), "-0.5");
+        assert!(quote_literal("not_a_float", &SqlType::Float).is_err());
     }
 
     #[test]
     fn test_quote_literal_boolean() {
-        assert_eq!(quote_literal(b"true", &SqlType::Boolean).unwrap(), "TRUE");
-        assert_eq!(quote_literal(b"True", &SqlType::Boolean).unwrap(), "TRUE");
-        assert_eq!(quote_literal(b"1", &SqlType::Boolean).unwrap(), "TRUE");
-        assert_eq!(quote_literal(b"t", &SqlType::Boolean).unwrap(), "TRUE");
-        assert_eq!(quote_literal(b"yes", &SqlType::Boolean).unwrap(), "TRUE");
-        assert_eq!(quote_literal(b"false", &SqlType::Boolean).unwrap(), "FALSE");
-        assert_eq!(quote_literal(b"False", &SqlType::Boolean).unwrap(), "FALSE");
-        assert_eq!(quote_literal(b"0", &SqlType::Boolean).unwrap(), "FALSE");
-        assert_eq!(quote_literal(b"f", &SqlType::Boolean).unwrap(), "FALSE");
-        assert_eq!(quote_literal(b"no", &SqlType::Boolean).unwrap(), "FALSE");
-        assert!(quote_literal(b"maybe", &SqlType::Boolean).is_err());
+        assert_eq!(quote_literal("true", &SqlType::Boolean).unwrap(), "TRUE");
+        assert_eq!(quote_literal("True", &SqlType::Boolean).unwrap(), "TRUE");
+        assert_eq!(quote_literal("1", &SqlType::Boolean).unwrap(), "TRUE");
+        assert_eq!(quote_literal("t", &SqlType::Boolean).unwrap(), "TRUE");
+        assert_eq!(quote_literal("yes", &SqlType::Boolean).unwrap(), "TRUE");
+        assert_eq!(quote_literal("false", &SqlType::Boolean).unwrap(), "FALSE");
+        assert_eq!(quote_literal("False", &SqlType::Boolean).unwrap(), "FALSE");
+        assert_eq!(quote_literal("0", &SqlType::Boolean).unwrap(), "FALSE");
+        assert_eq!(quote_literal("f", &SqlType::Boolean).unwrap(), "FALSE");
+        assert_eq!(quote_literal("no", &SqlType::Boolean).unwrap(), "FALSE");
+        assert!(quote_literal("maybe", &SqlType::Boolean).is_err());
     }
 
     #[test]
     fn test_quote_literal_binary() {
         assert_eq!(
-            quote_literal(b"48656C6C6F", &SqlType::Binary).unwrap(),
+            quote_literal("48656C6C6F", &SqlType::Binary).unwrap(),
             "'\\x48656C6C6F'"
         );
         assert_eq!(
-            quote_literal(b"DEADBEEF", &SqlType::Binary).unwrap(),
+            quote_literal("DEADBEEF", &SqlType::Binary).unwrap(),
             "'\\xDEADBEEF'"
         );
         assert_eq!(
-            quote_literal(b"deadbeef", &SqlType::Binary).unwrap(),
+            quote_literal("deadbeef", &SqlType::Binary).unwrap(),
             "'\\xdeadbeef'"
         );
         // Empty is valid
         assert_eq!(
-            quote_literal(b"", &SqlType::Binary).unwrap(),
+            quote_literal("", &SqlType::Binary).unwrap(),
             "'\\x'"
         );
         // Odd length
-        assert!(quote_literal(b"ABC", &SqlType::Binary).is_err());
+        assert!(quote_literal("ABC", &SqlType::Binary).is_err());
         // Non-hex characters
-        assert!(quote_literal(b"GHIJ", &SqlType::Binary).is_err());
-    }
-
-    #[test]
-    fn test_quote_literal_invalid_utf8() {
-        assert!(quote_literal(&[0xFF, 0xFE], &SqlType::Text).is_err());
-        assert!(quote_literal(&[0xFF, 0xFE], &SqlType::Integer).is_err());
+        assert!(quote_literal("GHIJ", &SqlType::Binary).is_err());
     }
 }

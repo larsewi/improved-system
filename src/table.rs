@@ -13,7 +13,7 @@ pub struct Table {
     /// The names of all columns in the table, primary key columns first.
     pub fields: Vec<String>,
     /// Map from primary key values to subsidiary values.
-    pub records: HashMap<Vec<Vec<u8>>, Vec<Vec<u8>>>,
+    pub records: HashMap<Vec<String>, Vec<String>>,
 }
 
 impl From<crate::proto::table::Table> for Table {
@@ -102,19 +102,19 @@ impl Table {
             .map(|&i| field_names[i].clone())
             .collect();
 
-        let mut records: HashMap<Vec<Vec<u8>>, Vec<Vec<u8>>> = HashMap::new();
+        let mut records: HashMap<Vec<String>, Vec<String>> = HashMap::new();
 
-        for record in reader.into_byte_records() {
+        for record in reader.into_records() {
             let record = record?;
 
-            let primary_key: Vec<Vec<u8>> = primary_indices
+            let primary_key: Vec<String> = primary_indices
                 .iter()
-                .filter_map(|&i| record.get(i).map(|b| b.to_vec()))
+                .filter_map(|&i| record.get(i).map(|s| s.to_string()))
                 .collect();
 
-            let subsidiary: Vec<Vec<u8>> = subsidiary_indices
+            let subsidiary: Vec<String> = subsidiary_indices
                 .iter()
-                .filter_map(|&i| record.get(i).map(|b| b.to_vec()))
+                .filter_map(|&i| record.get(i).map(|s| s.to_string()))
                 .collect();
 
             records.insert(primary_key, subsidiary);

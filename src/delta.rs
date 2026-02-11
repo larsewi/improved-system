@@ -5,7 +5,6 @@ use crate::entry::Entry;
 use crate::state::State;
 use crate::table::Table;
 use crate::update::Update;
-use crate::utils::format_row;
 
 
 /// Delta represents the changes to a single table between two states.
@@ -16,11 +15,11 @@ pub struct Delta {
     /// The names of all columns, primary key columns first.
     pub fields: Vec<String>,
     /// Entries that were added (key -> value).
-    pub inserts: HashMap<Vec<Vec<u8>>, Vec<Vec<u8>>>,
+    pub inserts: HashMap<Vec<String>, Vec<String>>,
     /// Entries that were removed (key -> value).
-    pub deletes: HashMap<Vec<Vec<u8>>, Vec<Vec<u8>>>,
+    pub deletes: HashMap<Vec<String>, Vec<String>>,
     /// Entries that were modified (key -> (old_value, new_value)).
-    pub updates: HashMap<Vec<Vec<u8>>, (Vec<Vec<u8>>, Vec<Vec<u8>>)>,
+    pub updates: HashMap<Vec<String>, (Vec<String>, Vec<String>)>,
 }
 
 impl From<crate::proto::delta::Delta> for Delta {
@@ -134,36 +133,36 @@ impl Delta {
 
     fn merge_insert(
         &mut self,
-        key: Vec<Vec<u8>>,
-        val: Vec<Vec<u8>>,
+        key: Vec<String>,
+        val: Vec<String>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         if self.inserts.contains_key(&key) {
             // Rule 5: double insert → error
-            log::debug!("Rule 5: key {} inserted in both blocks", format_row(&key));
-            return Err(format!("Conflict: key {} inserted in both blocks", format_row(&key)).into());
+            log::debug!("Rule 5: key {:?} inserted in both blocks", key);
+            return Err(format!("Conflict: key {:?} inserted in both blocks", key).into());
         } else if let Some(del_val) = self.deletes.remove(&key) {
             if del_val == val {
                 // Rule 9a: delete then insert with same value → cancels out
-                log::debug!("Rule 9a: delete + insert cancel out for key {}", format_row(&key));
+                log::debug!("Rule 9a: delete + insert cancel out for key {:?}", key);
             } else {
                 // Rule 9b: delete then insert with different value → update
-                log::debug!("Rule 9b: delete + insert becomes update for key {}", format_row(&key));
+                log::debug!("Rule 9b: delete + insert becomes update for key {:?}", key);
                 self.updates.insert(key, (del_val, val));
             }
         } else if self.updates.contains_key(&key) {
             // Rule 13: insert after update → error
             log::debug!(
-                "Rule 13: key {} updated in parent, inserted in current",
-                format_row(&key)
+                "Rule 13: key {:?} updated in parent, inserted in current",
+                key
             );
             return Err(format!(
-                "Conflict: key {} updated in parent, inserted in current",
-                format_row(&key)
+                "Conflict: key {:?} updated in parent, inserted in current",
+                key
             )
             .into());
         } else {
             // Rule 1: pass through
-            log::debug!("Rule 1: insert passes through for key {}", format_row(&key));
+            log::debug!("Rule 1: insert passes through for key {:?}", key);
             self.inserts.insert(key, val);
         }
         Ok(())
@@ -171,38 +170,36 @@ impl Delta {
 
     fn merge_delete(
         &mut self,
-        key: Vec<Vec<u8>>,
-        val: Vec<Vec<u8>>,
+        key: Vec<String>,
+        val: Vec<String>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         if self.inserts.remove(&key).is_some() {
             // Rule 6: insert then delete → cancels out
-            log::debug!("Rule 6: insert + delete cancel out for key {}", format_row(&key));
+            log::debug!("Rule 6: insert + delete cancel out for key {:?}", key);
         } else if self.deletes.contains_key(&key) {
             // Rule 10: double delete → error
-            log::debug!("Rule 10: key {} deleted in both blocks", format_row(&key));
-            return Err(format!("Conflict: key {} deleted in both blocks", format_row(&key)).into());
+            log::debug!("Rule 10: key {:?} deleted in both blocks", key);
+            return Err(format!("Conflict: key {:?} deleted in both blocks", key).into());
         } else if let Some((old, new_val)) = self.updates.remove(&key) {
             if val == new_val {
                 // Rule 14a: update then delete, values match → delete(old)
-                log::debug!("Rule 14a: update + delete becomes delete for key {}", format_row(&key));
+                log::debug!("Rule 14a: update + delete becomes delete for key {:?}", key);
                 self.deletes.insert(key, old);
             } else {
                 // Rule 14b: update then delete, values mismatch → error
                 log::debug!(
-                    "Rule 14b: key {} updated to {} in parent, but deleted with {}",
-                    format_row(&key),
-                    format_row(&new_val),
-                    format_row(&val)
+                    "Rule 14b: key {:?} updated to {:?} in parent, but deleted with {:?}",
+                    key, new_val, val
                 );
                 return Err(format!(
-                    "Conflict: key {} updated to {} in parent, but deleted with {}",
-                    format_row(&key), format_row(&new_val), format_row(&val)
+                    "Conflict: key {:?} updated to {:?} in parent, but deleted with {:?}",
+                    key, new_val, val
                 )
                 .into());
             }
         } else {
             // Rule 2: pass through
-            log::debug!("Rule 2: delete passes through for key {}", format_row(&key));
+            log::debug!("Rule 2: delete passes through for key {:?}", key);
             self.deletes.insert(key, val);
         }
         Ok(())
@@ -210,32 +207,32 @@ impl Delta {
 
     fn merge_update(
         &mut self,
-        key: Vec<Vec<u8>>,
-        other_old: Vec<Vec<u8>>,
-        other_new: Vec<Vec<u8>>,
+        key: Vec<String>,
+        other_old: Vec<String>,
+        other_new: Vec<String>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         if let Some(insert_val) = self.inserts.get_mut(&key) {
             // Rule 7: insert then update → insert(new_val)
-            log::debug!("Rule 7: insert + update becomes insert for key {}", format_row(&key));
+            log::debug!("Rule 7: insert + update becomes insert for key {:?}", key);
             *insert_val = other_new;
         } else if self.deletes.contains_key(&key) {
             // Rule 11: update after delete → error
             log::debug!(
-                "Rule 11: key {} deleted in parent, updated in current",
-                format_row(&key)
+                "Rule 11: key {:?} deleted in parent, updated in current",
+                key
             );
             return Err(format!(
-                "Conflict: key {} deleted in parent, updated in current",
-                format_row(&key)
+                "Conflict: key {:?} deleted in parent, updated in current",
+                key
             )
             .into());
         } else if let Some(update) = self.updates.get_mut(&key) {
             // Rule 15: update then update → update(old1 → new2)
-            log::debug!("Rule 15: update + update merged for key {}", format_row(&key));
+            log::debug!("Rule 15: update + update merged for key {:?}", key);
             update.1 = other_new;
         } else {
             // Rule 3: pass through
-            log::debug!("Rule 3: update passes through for key {}", format_row(&key));
+            log::debug!("Rule 3: update passes through for key {:?}", key);
             self.updates.insert(key, (other_old, other_new));
         }
         Ok(())
@@ -296,9 +293,9 @@ impl Delta {
         previous_table: Option<&Table>,
         current_table: &Table,
     ) -> (
-        HashMap<Vec<Vec<u8>>, Vec<Vec<u8>>>,
-        HashMap<Vec<Vec<u8>>, Vec<Vec<u8>>>,
-        HashMap<Vec<Vec<u8>>, (Vec<Vec<u8>>, Vec<Vec<u8>>)>,
+        HashMap<Vec<String>, Vec<String>>,
+        HashMap<Vec<String>, Vec<String>>,
+        HashMap<Vec<String>, (Vec<String>, Vec<String>)>,
     ) {
         let mut inserts = HashMap::new();
         let mut deletes = HashMap::new();
@@ -339,8 +336,8 @@ impl Delta {
 mod tests {
     use super::*;
 
-    fn make_key(key: &[&str]) -> Vec<Vec<u8>> {
-        key.iter().map(|s| s.as_bytes().to_vec()).collect()
+    fn make_key(key: &[&str]) -> Vec<String> {
+        key.iter().map(|s| s.to_string()).collect()
     }
 
     fn make_table(rows: &[(&[&str], &[&str])]) -> Table {
@@ -348,8 +345,8 @@ mod tests {
             .iter()
             .map(|(k, v)| {
                 (
-                    k.iter().map(|s| s.as_bytes().to_vec()).collect(),
-                    v.iter().map(|s| s.as_bytes().to_vec()).collect(),
+                    k.iter().map(|s| s.to_string()).collect(),
+                    v.iter().map(|s| s.to_string()).collect(),
                 )
             })
             .collect();
@@ -577,8 +574,8 @@ mod tests {
 
     // ---- Merge tests ----
 
-    fn make_val(val: &[&str]) -> Vec<Vec<u8>> {
-        val.iter().map(|s| s.as_bytes().to_vec()).collect()
+    fn make_val(val: &[&str]) -> Vec<String> {
+        val.iter().map(|s| s.to_string()).collect()
     }
 
     fn empty_delta() -> Delta {
