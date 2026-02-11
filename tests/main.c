@@ -52,7 +52,12 @@ int main(int argc, char *argv[]) {
       lch_free_buf(patch, patch_len);
       return EXIT_FAILURE;
     }
-    fwrite(patch, 1, patch_len, f);
+    if (fwrite(patch, 1, patch_len, f) != patch_len) {
+      fprintf(stderr, "Failed to write to '%s'\n", path);
+      fclose(f);
+      lch_free_buf(patch, patch_len);
+      return EXIT_FAILURE;
+    }
     fclose(f);
 
     lch_free_buf(patch, patch_len);
@@ -86,7 +91,12 @@ int main(int argc, char *argv[]) {
       return EXIT_FAILURE;
     }
 
-    fread(patch, 1, len, f);
+    if (fread(patch, 1, len, f) != len) {
+      fprintf(stderr, "Failed to read from '%s'\n", path);
+      free(patch);
+      fclose(f);
+      return EXIT_FAILURE;
+    }
     fclose(f);
 
     char *sql = NULL;
