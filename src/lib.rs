@@ -1,8 +1,6 @@
 use std::ffi::{CStr, CString, c_char};
 use std::path::PathBuf;
 
-use prost::Message;
-
 pub mod block;
 pub mod config;
 pub mod delta;
@@ -16,6 +14,7 @@ pub mod storage;
 pub mod table;
 pub mod update;
 pub mod utils;
+pub mod wire;
 
 #[unsafe(no_mangle)]
 pub extern "C" fn lch_init(work_dir: *const c_char) -> i32 {
@@ -87,11 +86,13 @@ pub extern "C" fn lch_patch_create(
         }
     };
 
-    let mut buf = Vec::new();
-    if let Err(e) = p.encode(&mut buf) {
-        log::error!("lch_patch_create(): Failed to encode patch: {}", e);
-        return -1;
-    }
+    let buf = match wire::encode_patch(&p) {
+        Ok(buf) => buf,
+        Err(e) => {
+            log::error!("lch_patch_create(): Failed to encode patch: {}", e);
+            return -1;
+        }
+    };
 
     let buf = buf.into_boxed_slice();
     let buf_len = buf.len();
@@ -119,7 +120,15 @@ pub extern "C" fn lch_patch_to_sql(buf: *const u8, len: usize, out: *mut *mut c_
 
     let data = unsafe { std::slice::from_raw_parts(buf, len) };
 
-    let sql = match sql::patch_to_sql(data) {
+    let patch = match wire::decode_patch(data) {
+        Ok(p) => p,
+        Err(e) => {
+            log::error!("lch_patch_to_sql(): Failed to decode patch: {}", e);
+            return -1;
+        }
+    };
+
+    let sql = match sql::patch_to_sql(&patch) {
         Ok(Some(s)) => s,
         Ok(None) => {
             unsafe { *out = std::ptr::null_mut() };

@@ -1,7 +1,5 @@
 use std::collections::HashSet;
 
-use prost::Message;
-
 use crate::config;
 use crate::proto::patch::patch::Payload;
 use crate::proto::patch::Patch;
@@ -274,11 +272,10 @@ fn state_to_sql(
     Ok(())
 }
 
-/// Decode a protobuf-encoded patch and convert it to SQL statements.
+/// Convert a decoded patch to SQL statements.
 ///
 /// Returns a SQL string wrapped in BEGIN/COMMIT.
-pub fn patch_to_sql(patch_data: &[u8]) -> Result<Option<String>, Box<dyn std::error::Error>> {
-    let patch = Patch::decode(patch_data)?;
+pub fn patch_to_sql(patch: &Patch) -> Result<Option<String>, Box<dyn std::error::Error>> {
     log::info!("Converting patch to SQL: {}", patch);
 
     match &patch.payload {

@@ -3,8 +3,6 @@ use std::path::PathBuf;
 use std::process::{Command as ProcessCommand, ExitCode, Stdio};
 
 use clap::{Parser, Subcommand};
-use prost::Message;
-
 use leech2::block::Block;
 use leech2::utils::{format_timestamp, GENESIS_HASH};
 
@@ -146,8 +144,7 @@ fn cmd_patch_create(reference: Option<&str>, n: Option<u32>) -> Result<(), Box<d
     let hash = resolve_ref(reference, n)?;
     let patch = leech2::patch::Patch::create(&hash)?;
 
-    let mut buf = Vec::new();
-    patch.encode(&mut buf)?;
+    let buf = leech2::wire::encode_patch(&patch)?;
     leech2::storage::save(PATCH_FILE, &buf)?;
 
     println!("{}", patch);
@@ -208,7 +205,7 @@ fn cmd_patch_show() -> Result<String, Box<dyn std::error::Error>> {
     let data = leech2::storage::load(PATCH_FILE)?
         .ok_or("no patch file found, run `lch patch create` first")?;
 
-    let patch = leech2::patch::Patch::decode(data.as_slice())?;
+    let patch = leech2::wire::decode_patch(&data)?;
     Ok(format!("{}", patch))
 }
 
@@ -216,7 +213,8 @@ fn cmd_patch_sql() -> Result<String, Box<dyn std::error::Error>> {
     let data = leech2::storage::load(PATCH_FILE)?
         .ok_or("no patch file found, run `lch patch create` first")?;
 
-    match leech2::sql::patch_to_sql(&data)? {
+    let patch = leech2::wire::decode_patch(&data)?;
+    match leech2::sql::patch_to_sql(&patch)? {
         Some(sql) => Ok(sql),
         None => Ok("-- no changes\n".to_string()),
     }
