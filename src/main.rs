@@ -24,6 +24,8 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Cmd {
+    /// Initialize a new .leech2 work directory with an example table
+    Init,
     /// Create a new block from current CSV state
     Create,
     /// List all blocks from HEAD to genesis
@@ -78,6 +80,39 @@ fn walk_back(n: u32) -> Result<String, Box<dyn std::error::Error>> {
         hash = block.parent;
     }
     Ok(hash)
+}
+
+fn cmd_init(work_dir: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
+    if work_dir.join("config.toml").exists() {
+        return Err(format!(
+            "already initialized: {} exists",
+            work_dir.join("config.toml").display()
+        )
+        .into());
+    }
+
+    std::fs::create_dir_all(work_dir)?;
+
+    std::fs::write(
+        work_dir.join("config.toml"),
+        r#"[tables.example]
+source = "example.csv"
+
+[[tables.example.fields]]
+name = "id"
+type = "INTEGER"
+primary-key = true
+
+[[tables.example.fields]]
+name = "name"
+type = "TEXT"
+"#,
+    )?;
+
+    std::fs::write(work_dir.join("example.csv"), "id,name\n1,Alice\n2,Bob\n")?;
+
+    println!("Initialized {}", work_dir.display());
+    Ok(())
 }
 
 fn cmd_create() -> Result<(), Box<dyn std::error::Error>> {
@@ -178,9 +213,15 @@ fn print_with_pager(content: &str) {
 
 fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
     let work_dir = work_dir(&cli);
+
+    if let Cmd::Init = &cli.command {
+        return cmd_init(&work_dir);
+    }
+
     leech2::config::Config::init(&work_dir)?;
 
     match &cli.command {
+        Cmd::Init => unreachable!(),
         Cmd::Create => {
             cmd_create()?;
         }
