@@ -16,7 +16,7 @@ use crate::utils::GENESIS_HASH;
 impl fmt::Display for Patch {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Patch:")?;
-        write!(f, "\n  Head: {:.7}...", self.head_hash)?;
+        write!(f, "\n  Head: {}", self.head_hash)?;
         match &self.head_created {
             Some(ts) => write!(f, "\n  Created: {}", utils::format_timestamp(ts))?,
             None => write!(f, "\n  Created: N/A")?,

@@ -81,3 +81,4 @@ dkms.conf
 
 leech2
 tests/.workdir/*
+.leech2/*

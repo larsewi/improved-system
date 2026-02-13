@@ -4,18 +4,18 @@ use std::path::PathBuf;
 use prost::Message;
 
 pub mod block;
-mod config;
+pub mod config;
 pub mod delta;
 pub mod entry;
-mod head;
+pub mod head;
 pub mod patch;
 mod proto;
 pub mod sql;
 pub mod state;
-mod storage;
+pub mod storage;
 pub mod table;
 pub mod update;
-mod utils;
+pub mod utils;
 
 #[unsafe(no_mangle)]
 pub extern "C" fn lch_init(work_dir: *const c_char) -> i32 {
