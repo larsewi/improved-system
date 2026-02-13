@@ -228,7 +228,9 @@ impl Delta {
                 // Rule 14b: update then delete, values mismatch → error
                 log::debug!(
                     "Rule 14b: key {:?} updated to {:?} in parent, but deleted with {:?}",
-                    key, new_val, val
+                    key,
+                    new_val,
+                    val
                 );
                 return Err(format!(
                     "Conflict: key {:?} updated to {:?} in parent, but deleted with {:?}",

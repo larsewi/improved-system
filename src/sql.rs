@@ -1,8 +1,8 @@
 use std::collections::HashSet;
 
 use crate::config;
-use crate::proto::patch::patch::Payload;
 use crate::proto::patch::Patch;
+use crate::proto::patch::patch::Payload;
 
 /// SQL type mapping for converting CSV byte values to SQL literals.
 #[derive(Debug, Clone, PartialEq)]
@@ -143,13 +143,11 @@ fn format_row(
 
     let mut literals = Vec::with_capacity(key.len() + value.len());
     for (val, (name, sql_type)) in key.iter().zip(pk_types) {
-        let lit = quote_literal(val, sql_type)
-            .map_err(|e| format!("field '{}': {}", name, e))?;
+        let lit = quote_literal(val, sql_type).map_err(|e| format!("field '{}': {}", name, e))?;
         literals.push(lit);
     }
     for (val, (name, sql_type)) in value.iter().zip(sub_types) {
-        let lit = quote_literal(val, sql_type)
-            .map_err(|e| format!("field '{}': {}", name, e))?;
+        let lit = quote_literal(val, sql_type).map_err(|e| format!("field '{}': {}", name, e))?;
         literals.push(lit);
     }
     Ok(literals)
@@ -170,8 +168,8 @@ fn delta_to_sql(
             .iter()
             .zip(schema.pk_types())
             .map(|(val, (name, sql_type))| {
-                let lit = quote_literal(val, sql_type)
-                    .map_err(|e| format!("field '{}': {}", name, e))?;
+                let lit =
+                    quote_literal(val, sql_type).map_err(|e| format!("field '{}': {}", name, e))?;
                 Ok(format!("{} = {}", quote_ident(name), lit))
             })
             .collect::<Result<Vec<_>, Box<dyn std::error::Error>>>()?;
@@ -212,8 +210,8 @@ fn delta_to_sql(
             .zip(update.new_value.iter())
             .map(|(idx, val)| {
                 let (name, sql_type) = &sub_types[*idx as usize];
-                let lit = quote_literal(val, sql_type)
-                    .map_err(|e| format!("field '{}': {}", name, e))?;
+                let lit =
+                    quote_literal(val, sql_type).map_err(|e| format!("field '{}': {}", name, e))?;
                 Ok(format!("{} = {}", quote_ident(name), lit))
             })
             .collect::<Result<Vec<_>, Box<dyn std::error::Error>>>()?;
@@ -223,8 +221,8 @@ fn delta_to_sql(
             .iter()
             .zip(schema.pk_types())
             .map(|(val, (name, sql_type))| {
-                let lit = quote_literal(val, sql_type)
-                    .map_err(|e| format!("field '{}': {}", name, e))?;
+                let lit =
+                    quote_literal(val, sql_type).map_err(|e| format!("field '{}': {}", name, e))?;
                 Ok(format!("{} = {}", quote_ident(name), lit))
             })
             .collect::<Result<Vec<_>, Box<dyn std::error::Error>>>()?;
@@ -345,14 +343,8 @@ mod tests {
 
     #[test]
     fn test_quote_literal_text() {
-        assert_eq!(
-            quote_literal("hello", &SqlType::Text).unwrap(),
-            "'hello'"
-        );
-        assert_eq!(
-            quote_literal("", &SqlType::Text).unwrap(),
-            "''"
-        );
+        assert_eq!(quote_literal("hello", &SqlType::Text).unwrap(), "'hello'");
+        assert_eq!(quote_literal("", &SqlType::Text).unwrap(), "''");
     }
 
     #[test]
@@ -361,10 +353,7 @@ mod tests {
             quote_literal("it's a test", &SqlType::Text).unwrap(),
             "'it''s a test'"
         );
-        assert_eq!(
-            quote_literal("a''b", &SqlType::Text).unwrap(),
-            "'a''''b'"
-        );
+        assert_eq!(quote_literal("a''b", &SqlType::Text).unwrap(), "'a''''b'");
     }
 
     #[test]
@@ -411,10 +400,7 @@ mod tests {
             "'\\xdeadbeef'"
         );
         // Empty is valid
-        assert_eq!(
-            quote_literal("", &SqlType::Binary).unwrap(),
-            "'\\x'"
-        );
+        assert_eq!(quote_literal("", &SqlType::Binary).unwrap(), "'\\x'");
         // Odd length
         assert!(quote_literal("ABC", &SqlType::Binary).is_err());
         // Non-hex characters

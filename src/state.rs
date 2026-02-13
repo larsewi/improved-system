@@ -60,7 +60,10 @@ impl State {
         };
 
         let proto_state = crate::proto::state::State::decode(data.as_slice())?;
-        log::info!("Loaded previous state with {} tables", proto_state.tables.len());
+        log::info!(
+            "Loaded previous state with {} tables",
+            proto_state.tables.len()
+        );
         log::debug!("{}", proto_state);
         let state = State::from(proto_state);
         Ok(Some(state))

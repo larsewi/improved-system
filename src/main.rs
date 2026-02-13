@@ -4,7 +4,7 @@ use std::process::{Command as ProcessCommand, ExitCode, Stdio};
 
 use clap::{Parser, Subcommand};
 use leech2::block::Block;
-use leech2::utils::{format_timestamp, GENESIS_HASH};
+use leech2::utils::{GENESIS_HASH, format_timestamp};
 
 const LEECH2_DIR: &str = ".leech2";
 const PATCH_FILE: &str = "PATCH";
@@ -75,7 +75,10 @@ fn work_dir(cli: &Cli) -> PathBuf {
     base.join(LEECH2_DIR)
 }
 
-fn resolve_ref(reference: Option<&str>, n: Option<u32>) -> Result<String, Box<dyn std::error::Error>> {
+fn resolve_ref(
+    reference: Option<&str>,
+    n: Option<u32>,
+) -> Result<String, Box<dyn std::error::Error>> {
     match (reference, n) {
         (Some(_), Some(_)) => Err("cannot specify both a hash prefix and -n".into()),
         (Some(r), None) => leech2::patch::resolve_hash_prefix(r),
@@ -88,11 +91,7 @@ fn walk_back(n: u32) -> Result<String, Box<dyn std::error::Error>> {
     let mut hash = leech2::head::load()?;
     for i in 0..n {
         if hash == GENESIS_HASH {
-            return Err(format!(
-                "only {} block(s) in chain, cannot go back {}",
-                i, n
-            )
-            .into());
+            return Err(format!("only {} block(s) in chain, cannot go back {}", i, n).into());
         }
         let block = Block::load(&hash)?;
         hash = block.parent;
@@ -140,7 +139,10 @@ fn cmd_block_create() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn cmd_patch_create(reference: Option<&str>, n: Option<u32>) -> Result<(), Box<dyn std::error::Error>> {
+fn cmd_patch_create(
+    reference: Option<&str>,
+    n: Option<u32>,
+) -> Result<(), Box<dyn std::error::Error>> {
     let hash = resolve_ref(reference, n)?;
     let patch = leech2::patch::Patch::create(&hash)?;
 
@@ -192,7 +194,10 @@ fn cmd_log() -> Result<String, Box<dyn std::error::Error>> {
     Ok(output)
 }
 
-fn cmd_block_show(reference: Option<&str>, n: Option<u32>) -> Result<String, Box<dyn std::error::Error>> {
+fn cmd_block_show(
+    reference: Option<&str>,
+    n: Option<u32>,
+) -> Result<String, Box<dyn std::error::Error>> {
     let hash = resolve_ref(reference, n)?;
     if hash == GENESIS_HASH {
         return Err("cannot show the genesis block".into());
@@ -223,7 +228,10 @@ fn cmd_patch_sql() -> Result<String, Box<dyn std::error::Error>> {
 fn print_with_pager(content: &str) {
     let pager_cmd = std::env::var("PAGER").unwrap_or_else(|_| "less".to_string());
 
-    let mut child = match ProcessCommand::new(&pager_cmd).stdin(Stdio::piped()).spawn() {
+    let mut child = match ProcessCommand::new(&pager_cmd)
+        .stdin(Stdio::piped())
+        .spawn()
+    {
         Ok(child) => child,
         Err(_) => {
             print!("{}", content);

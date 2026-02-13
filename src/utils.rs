@@ -15,6 +15,7 @@ pub fn indent(text: &str, prefix: &str) -> String {
 
 /// Format a protobuf timestamp as a human-readable UTC string.
 pub fn format_timestamp(ts: &prost_types::Timestamp) -> String {
-    chrono::DateTime::from_timestamp(ts.seconds, 0)
-        .map_or("N/A".into(), |dt| dt.format("%Y-%m-%d %H:%M:%S UTC").to_string())
+    chrono::DateTime::from_timestamp(ts.seconds, 0).map_or("N/A".into(), |dt| {
+        dt.format("%Y-%m-%d %H:%M:%S UTC").to_string()
+    })
 }

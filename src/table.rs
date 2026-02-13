@@ -5,7 +5,6 @@ use std::fs::File;
 use crate::config::{self, TableConfig};
 use crate::entry::Entry;
 
-
 /// A table with records stored in a hash map for efficient lookup.
 /// Fields are ordered with primary key columns first, followed by subsidiary columns.
 #[derive(Debug, Clone, PartialEq)]
