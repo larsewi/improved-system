@@ -136,13 +136,13 @@ type = "TEXT"
     Ok(())
 }
 
-fn cmd_create_block() -> Result<(), Box<dyn std::error::Error>> {
+fn cmd_block_create() -> Result<(), Box<dyn std::error::Error>> {
     let hash = Block::create()?;
     println!("{}", hash);
     Ok(())
 }
 
-fn cmd_create_patch(reference: Option<&str>, n: Option<u32>) -> Result<(), Box<dyn std::error::Error>> {
+fn cmd_patch_create(reference: Option<&str>, n: Option<u32>) -> Result<(), Box<dyn std::error::Error>> {
     let hash = resolve_ref(reference, n)?;
     let patch = leech2::patch::Patch::create(&hash)?;
 
@@ -195,7 +195,7 @@ fn cmd_log() -> Result<String, Box<dyn std::error::Error>> {
     Ok(output)
 }
 
-fn cmd_show_block(reference: Option<&str>, n: Option<u32>) -> Result<String, Box<dyn std::error::Error>> {
+fn cmd_block_show(reference: Option<&str>, n: Option<u32>) -> Result<String, Box<dyn std::error::Error>> {
     let hash = resolve_ref(reference, n)?;
     if hash == GENESIS_HASH {
         return Err("cannot show the genesis block".into());
@@ -204,17 +204,17 @@ fn cmd_show_block(reference: Option<&str>, n: Option<u32>) -> Result<String, Box
     Ok(format!("block {}\n{}", hash, block))
 }
 
-fn cmd_show_patch() -> Result<String, Box<dyn std::error::Error>> {
+fn cmd_patch_show() -> Result<String, Box<dyn std::error::Error>> {
     let data = leech2::storage::load(PATCH_FILE)?
-        .ok_or("no patch file found, run `lch create patch` first")?;
+        .ok_or("no patch file found, run `lch patch create` first")?;
 
     let patch = leech2::patch::Patch::decode(data.as_slice())?;
     Ok(format!("{}", patch))
 }
 
-fn cmd_show_sql() -> Result<String, Box<dyn std::error::Error>> {
+fn cmd_patch_sql() -> Result<String, Box<dyn std::error::Error>> {
     let data = leech2::storage::load(PATCH_FILE)?
-        .ok_or("no patch file found, run `lch create patch` first")?;
+        .ok_or("no patch file found, run `lch patch create` first")?;
 
     match leech2::sql::patch_to_sql(&data)? {
         Some(sql) => Ok(sql),
@@ -252,22 +252,22 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
     match &cli.command {
         Cmd::Init => unreachable!(),
         Cmd::Block { command } => match command {
-            BlockCmd::Create => cmd_create_block()?,
+            BlockCmd::Create => cmd_block_create()?,
             BlockCmd::Show { reference, n } => {
-                let output = cmd_show_block(reference.as_deref(), *n)?;
+                let output = cmd_block_show(reference.as_deref(), *n)?;
                 print_with_pager(&output);
             }
         },
         Cmd::Patch { command } => match command {
             PatchCmd::Create { reference, n } => {
-                cmd_create_patch(reference.as_deref(), *n)?;
+                cmd_patch_create(reference.as_deref(), *n)?;
             }
             PatchCmd::Show => {
-                let output = cmd_show_patch()?;
+                let output = cmd_patch_show()?;
                 print_with_pager(&output);
             }
             PatchCmd::Sql => {
-                let output = cmd_show_sql()?;
+                let output = cmd_patch_sql()?;
                 print_with_pager(&output);
             }
         },
