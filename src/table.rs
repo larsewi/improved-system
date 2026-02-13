@@ -47,7 +47,12 @@ impl fmt::Display for crate::proto::table::Table {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "[{}]", self.fields.join(", "))?;
         for entry in &self.entries {
-            write!(f, "\n  {}", entry)?;
+            write!(
+                f,
+                "\n  ({}) {}",
+                entry.key.join(", "),
+                entry.value.join(", ")
+            )?;
         }
         Ok(())
     }

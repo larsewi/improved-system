@@ -119,25 +119,75 @@ impl From<Delta> for crate::proto::delta::Delta {
     }
 }
 
+impl crate::proto::delta::Delta {
+    /// Number of subsidiary (non-key) fields.
+    fn num_sub(&self) -> usize {
+        let num_pk = self
+            .inserts
+            .first()
+            .map(|e| e.key.len())
+            .or_else(|| self.deletes.first().map(|e| e.key.len()))
+            .or_else(|| self.updates.first().map(|u| u.key.len()))
+            .unwrap_or(0);
+        self.fields.len().saturating_sub(num_pk)
+    }
+}
+
 impl fmt::Display for crate::proto::delta::Delta {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let num_sub = self.num_sub();
+
         write!(f, "'{}' [{}]", self.name, self.fields.join(", "))?;
         if !self.inserts.is_empty() {
             write!(f, "\n  Inserts ({}):", self.inserts.len())?;
             for entry in &self.inserts {
-                write!(f, "\n    {}", entry)?;
+                write!(
+                    f,
+                    "\n    ({}) {}",
+                    entry.key.join(", "),
+                    entry.value.join(", ")
+                )?;
             }
         }
         if !self.deletes.is_empty() {
             write!(f, "\n  Deletes ({}):", self.deletes.len())?;
             for entry in &self.deletes {
-                write!(f, "\n    {}", entry)?;
+                write!(
+                    f,
+                    "\n    ({}) {}",
+                    entry.key.join(", "),
+                    entry.value.join(", ")
+                )?;
             }
         }
         if !self.updates.is_empty() {
             write!(f, "\n  Updates ({}):", self.updates.len())?;
             for update in &self.updates {
-                write!(f, "\n    {}", update)?;
+                // Build positional columns with _ for unchanged fields.
+                let changed: std::collections::HashSet<u32> =
+                    update.changed_indices.iter().copied().collect();
+                let has_old = !update.old_value.is_empty();
+
+                let mut new_iter = update.new_value.iter();
+                let mut old_iter = update.old_value.iter();
+
+                let cols: Vec<String> = (0..num_sub as u32)
+                    .map(|i| {
+                        if changed.contains(&i) {
+                            let new = new_iter.next().map(|s| s.as_str()).unwrap_or("?");
+                            if has_old {
+                                let old = old_iter.next().map(|s| s.as_str()).unwrap_or("?");
+                                format!("{} -> {}", old, new)
+                            } else {
+                                new.to_string()
+                            }
+                        } else {
+                            "_".to_string()
+                        }
+                    })
+                    .collect();
+
+                write!(f, "\n    ({}) {}", update.key.join(", "), cols.join(", "))?;
             }
         }
         Ok(())
