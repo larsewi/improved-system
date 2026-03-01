@@ -91,9 +91,8 @@ fields = [
     let config = Config::load(work_dir).unwrap();
     Block::create(&config).unwrap();
 
-    // Create a state-payload patch by forcing many blocks so deltas are larger
-    // Actually, for a single block from genesis, the patch might use state if
-    // state is smaller. Let's just create the patch and check whichever path.
+    // With only one row, the state snapshot is smaller than the delta, so the
+    // patch will use the state payload path.
     let patch = Patch::create(&config, GENESIS_HASH).unwrap();
     let sql = sql::patch_to_sql(&config, &patch).unwrap().unwrap();
 
