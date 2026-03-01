@@ -61,6 +61,7 @@ Printing the patch shows either deltas or full state:
 Patch:
   Head: 9c4d2e8f...
   Created: 2025-06-15 08:30:00 UTC
+  Host: host = agent-1
   Blocks: 3
   Payload (1 deltas):
     'employees' [employee_id, first_name, hire_date]
@@ -80,6 +81,12 @@ transaction with `DELETE`, `INSERT`, and `UPDATE` statements (in that order).
 For full-state payloads it generates `TRUNCATE` followed by `INSERT` statements.
 Column types defined in the config control how values are formatted in the SQL
 output (quoting for `TEXT`, bare numbers for `INTEGER`, etc.).
+
+When a patch carries a host identifier (see `[host]` config section in
+[README.md](README.md)), the host column is injected into all SQL output:
+`INSERT` values include the host, `DELETE`/`UPDATE` WHERE clauses are scoped by
+host, and state payloads use `DELETE FROM ... WHERE host = ...` instead of
+`TRUNCATE` so that other agents' data is preserved.
 
 ### Patch::applied()
 
@@ -126,7 +133,7 @@ tests/          Acceptance tests
 
 ## Core data model
 
-- **Config** (`src/config.rs`) -- TOML/JSON config defining tables, their CSV source files, field names, and primary keys. Returned by `Config::load()` and passed by reference to functions that need it.
+- **Config** (`src/config.rs`) -- TOML/JSON config defining tables, their CSV source files, field names, primary keys, and optional host identifier. Returned by `Config::load()` and passed by reference to functions that need it.
 - **Table** (`src/table.rs`) -- In-memory representation of a CSV table. Records stored as `HashMap<Vec<String>, Vec<String>>` (primary key -> subsidiary columns). Fields are reordered so primary key columns come first.
 - **State** (`src/state.rs`) -- Snapshot of all tables at a point in time. Serialized to protobuf and persisted as `STATE` file.
 - **Delta** (`src/delta.rs`) -- Diff between two states for a single table: inserts, deletes, and updates. Contains the merge logic implementing 15 rules (see [DELTA_MERGING_RULES.md](DELTA_MERGING_RULES.md)).
@@ -214,6 +221,7 @@ sql::patch_to_sql()
     |
     +--> Deltas payload: BEGIN; DELETE...; INSERT...; UPDATE...; COMMIT;
     +--> State payload:  BEGIN; TRUNCATE...; INSERT...; COMMIT;
+    (with host: DELETE/UPDATE WHERE scoped by host, state uses DELETE WHERE instead of TRUNCATE)
 ```
 
 ## Delta merging rules
