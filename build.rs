@@ -4,6 +4,7 @@ fn main() {
             "proto/block.proto",
             "proto/delta.proto",
             "proto/entry.proto",
+            "proto/host.proto",
             "proto/patch.proto",
             "proto/state.proto",
             "proto/table.proto",

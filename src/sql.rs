@@ -4,8 +4,9 @@ use anyhow::{Context, Result, bail};
 use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime};
 
 use crate::config::Config;
+use crate::proto::host::Host;
+use crate::proto::patch::Patch;
 use crate::proto::patch::patch::Payload;
-use crate::proto::patch::{Host, Patch};
 
 /// SQL type mapping for converting CSV byte values to SQL literals.
 #[derive(Debug, Clone, PartialEq)]

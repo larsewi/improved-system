@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package host;
+
+// Host identifier embedded in a patch by the agent.
+// When present, patch_to_sql injects an extra column into all SQL output.
+message Host {
+  // Column name in the target database (e.g. "host").
+  string name = 1;
+  // SQL type string (e.g. "TEXT", "INTEGER"). Defaults to TEXT.
+  string type = 2;
+  // The identifier value (e.g. "agent-1").
+  string value = 3;
+  // Optional strptime format for DATE/TIME/DATETIME types.
+  string format = 4;
+}
