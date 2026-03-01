@@ -11,19 +11,34 @@ message Deltas {
   repeated delta.Delta items = 1;
 }
 
+// Host identifier embedded in a patch by the agent.
+// When present, patch_to_sql injects an extra column into all SQL output.
+message Host {
+  // Column name in the target database (e.g. "host").
+  string name = 1;
+  // SQL type string (e.g. "TEXT", "INTEGER"). Defaults to TEXT.
+  string type = 2;
+  // The identifier value (e.g. "agent-1").
+  string value = 3;
+  // Optional strptime format for DATE/TIME/DATETIME types.
+  string format = 4;
+}
+
 // Patch represents the merged diff between two blocks in the chain.
 message Patch {
   // The hash of the most recent block in the chain (HEAD).
   string head_hash = 1;
   // Timestamp when the HEAD block was created.
   google.protobuf.Timestamp head_created = 2;
+  // Optional host identifier. When set, SQL output includes this as an extra column.
+  Host host = 3;
   // The number of blocks that were merged to produce this patch.
-  uint32 num_blocks = 3;
+  uint32 num_blocks = 4;
   // The payload is either merged deltas or a full state snapshot (fallback).
   oneof payload {
     // Merged deltas representing the combined changes between the two blocks.
-    Deltas deltas = 4;
+    Deltas deltas = 5;
     // Full state snapshot, used when delta merging fails due to conflicts.
-    state.State state = 5;
+    state.State state = 6;
   }
 }

@@ -96,6 +96,24 @@ format = "%Y-%m-%d"
 | `TIME`     | `'10:30:00'`            | Parsed with `format` (default `%H:%M:%S`)    |
 | `DATETIME` | `'2024-01-15 10:30:00'` | Parsed with `format` or as unix epoch        |
 
+### Host identifier
+
+An optional `[host]` section embeds a host identifier in every patch. When
+present, `patch_to_sql` injects the host as an extra column in all generated SQL
+statements (INSERT values, DELETE/UPDATE WHERE clauses). State-payload patches
+use `DELETE FROM ... WHERE host = ...` instead of `TRUNCATE` so that other
+agents' data is preserved.
+
+```toml
+[host]
+name = "host"       # column name in the target database
+type = "TEXT"        # SQL type (default: TEXT)
+value = "agent-1"   # the identifier value
+```
+
+The `type` field accepts the same values as table field types (TEXT, INTEGER,
+etc.). An optional `format` field is supported for DATE/TIME/DATETIME types.
+
 ### Compression
 
 Patches are compressed with zstd by default. An optional `[compression]` section

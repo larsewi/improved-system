@@ -4,8 +4,8 @@ use anyhow::{Context, Result, bail};
 use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime};
 
 use crate::config::Config;
-use crate::proto::patch::Patch;
 use crate::proto::patch::patch::Payload;
+use crate::proto::patch::{Host, Patch};
 
 /// SQL type mapping for converting CSV byte values to SQL literals.
 #[derive(Debug, Clone, PartialEq)]
@@ -110,6 +110,42 @@ impl TableSchema {
     }
 }
 
+/// Resolved host identifier for SQL injection.
+struct HostInfo {
+    name: String,
+    sql_type: SqlType,
+    value: String,
+}
+
+impl HostInfo {
+    fn resolve(host: &Host) -> Result<Self> {
+        let fmt = if host.format.is_empty() {
+            None
+        } else {
+            Some(host.format.as_str())
+        };
+        let sql_type = SqlType::from_config(&host.r#type, fmt).context("host.type")?;
+        Ok(HostInfo {
+            name: host.name.clone(),
+            sql_type,
+            value: host.value.clone(),
+        })
+    }
+
+    fn where_clause(&self) -> Result<String> {
+        let lit = quote_literal(&self.value, &self.sql_type).context("host value")?;
+        Ok(format!("{} = {}", quote_ident(&self.name), lit))
+    }
+
+    fn quoted_column(&self) -> String {
+        quote_ident(&self.name)
+    }
+
+    fn quoted_value(&self) -> Result<String> {
+        quote_literal(&self.value, &self.sql_type).context("host value")
+    }
+}
+
 /// Double-quote a SQL identifier, escaping embedded double quotes.
 fn quote_ident(name: &str) -> String {
     format!("\"{}\"", name.replace('"', "\"\""))
@@ -205,6 +241,7 @@ fn format_row(key: &[String], value: &[String], schema: &TableSchema) -> Result<
 fn delta_to_sql(
     config: &Config,
     delta: &crate::proto::delta::Delta,
+    host: Option<&HostInfo>,
     out: &mut String,
 ) -> Result<()> {
     let schema = TableSchema::resolve(config, &delta.table_name)?;
@@ -212,7 +249,7 @@ fn delta_to_sql(
 
     // DELETEs
     for entry in &delta.deletes {
-        let pk_literals: Vec<String> = entry
+        let mut where_parts: Vec<String> = entry
             .key
             .iter()
             .zip(schema.pk_types())
@@ -223,24 +260,35 @@ fn delta_to_sql(
             })
             .collect::<Result<Vec<_>>>()?;
 
+        if let Some(h) = host {
+            where_parts.push(h.where_clause()?);
+        }
+
         out.push_str(&format!(
             "DELETE FROM {} WHERE {};\n",
             table,
-            pk_literals.join(" AND ")
+            where_parts.join(" AND ")
         ));
     }
 
     // INSERTs
     if !delta.inserts.is_empty() {
-        let columns: String = schema
+        let mut col_parts: Vec<String> = schema
             .fields
             .iter()
             .map(|(name, _)| quote_ident(name))
-            .collect::<Vec<_>>()
-            .join(", ");
+            .collect();
+
+        if let Some(h) = host {
+            col_parts.insert(0, h.quoted_column());
+        }
+        let columns = col_parts.join(", ");
 
         for entry in &delta.inserts {
-            let literals = format_row(&entry.key, &entry.value, &schema)?;
+            let mut literals = format_row(&entry.key, &entry.value, &schema)?;
+            if let Some(h) = host {
+                literals.insert(0, h.quoted_value()?);
+            }
             out.push_str(&format!(
                 "INSERT INTO {} ({}) VALUES ({});\n",
                 table,
@@ -265,7 +313,7 @@ fn delta_to_sql(
             })
             .collect::<Result<Vec<_>>>()?;
 
-        let where_parts: Vec<String> = update
+        let mut where_parts: Vec<String> = update
             .key
             .iter()
             .zip(schema.pk_types())
@@ -275,6 +323,10 @@ fn delta_to_sql(
                 Ok(format!("{} = {}", quote_ident(name), lit))
             })
             .collect::<Result<Vec<_>>>()?;
+
+        if let Some(h) = host {
+            where_parts.push(h.where_clause()?);
+        }
 
         out.push_str(&format!(
             "UPDATE {} SET {} WHERE {};\n",
@@ -287,28 +339,43 @@ fn delta_to_sql(
     Ok(())
 }
 
-/// Generate SQL statements for a full state (TRUNCATE + INSERT per table).
+/// Generate SQL statements for a full state (TRUNCATE/DELETE + INSERT per table).
 fn state_to_sql(
     config: &Config,
     state: &crate::proto::state::State,
+    host: Option<&HostInfo>,
     out: &mut String,
 ) -> Result<()> {
     for (table_name, table) in &state.tables {
         let schema = TableSchema::resolve(config, table_name)?;
         let quoted_table = quote_ident(table_name);
 
-        out.push_str(&format!("TRUNCATE {};\n", quoted_table));
+        match host {
+            Some(h) => out.push_str(&format!(
+                "DELETE FROM {} WHERE {};\n",
+                quoted_table,
+                h.where_clause()?
+            )),
+            None => out.push_str(&format!("TRUNCATE {};\n", quoted_table)),
+        }
 
         if !table.entries.is_empty() {
-            let columns: String = schema
+            let mut col_parts: Vec<String> = schema
                 .fields
                 .iter()
                 .map(|(name, _)| quote_ident(name))
-                .collect::<Vec<_>>()
-                .join(", ");
+                .collect();
+
+            if let Some(h) = host {
+                col_parts.insert(0, h.quoted_column());
+            }
+            let columns = col_parts.join(", ");
 
             for entry in &table.entries {
-                let literals = format_row(&entry.key, &entry.value, &schema)?;
+                let mut literals = format_row(&entry.key, &entry.value, &schema)?;
+                if let Some(h) = host {
+                    literals.insert(0, h.quoted_value()?);
+                }
                 out.push_str(&format!(
                     "INSERT INTO {} ({}) VALUES ({});\n",
                     quoted_table,
@@ -328,12 +395,15 @@ fn state_to_sql(
 pub fn patch_to_sql(config: &Config, patch: &Patch) -> Result<Option<String>> {
     log::info!("Converting patch to SQL: {}", patch);
 
+    let host = patch.host.as_ref().map(HostInfo::resolve).transpose()?;
+    let host_ref = host.as_ref();
+
     match &patch.payload {
         Some(Payload::Deltas(deltas)) => {
             log::info!("Converting {} deltas to SQL", deltas.items.len());
             let mut sql = String::from("BEGIN;\n");
             for delta in &deltas.items {
-                delta_to_sql(config, delta, &mut sql)?;
+                delta_to_sql(config, delta, host_ref, &mut sql)?;
             }
             sql.push_str("COMMIT;\n");
             Ok(Some(sql))
@@ -344,7 +414,7 @@ pub fn patch_to_sql(config: &Config, patch: &Patch) -> Result<Option<String>> {
                 state.tables.len()
             );
             let mut sql = String::from("BEGIN;\n");
-            state_to_sql(config, state, &mut sql)?;
+            state_to_sql(config, state, host_ref, &mut sql)?;
             sql.push_str("COMMIT;\n");
             Ok(Some(sql))
         }

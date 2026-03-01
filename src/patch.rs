@@ -8,13 +8,25 @@ use prost::Message;
 use prost_types::Timestamp;
 
 use crate::block::Block;
-use crate::config::Config;
+use crate::config::{Config, HostConfig};
 use crate::head;
 use crate::proto::patch::Deltas;
+use crate::proto::patch::Host;
 use crate::proto::patch::patch::Payload;
 use crate::state;
 use crate::utils;
 use crate::utils::GENESIS_HASH;
+
+impl From<&HostConfig> for Host {
+    fn from(h: &HostConfig) -> Self {
+        Host {
+            name: h.name.clone(),
+            r#type: h.field_type.clone(),
+            value: h.value.clone(),
+            format: h.format.clone().unwrap_or_default(),
+        }
+    }
+}
 
 type ConsolidateResult = (Option<Timestamp>, u32, Option<Payload>);
 
@@ -25,6 +37,9 @@ impl fmt::Display for Patch {
         match &self.head_created {
             Some(ts) => write!(f, "\n  Created: {}", utils::format_timestamp(ts))?,
             None => write!(f, "\n  Created: N/A")?,
+        }
+        if let Some(host) = &self.host {
+            write!(f, "\n  Host: {} = {}", host.name, host.value)?;
         }
         write!(f, "\n  Blocks: {}", self.num_blocks)?;
         match &self.payload {
@@ -170,10 +185,13 @@ impl Patch {
 
         let head_hash = head::load(work_dir)?;
 
+        let host = config.host.as_ref().map(Host::from);
+
         if head_hash == GENESIS_HASH {
             let patch = Patch {
                 head_hash,
                 head_created: None,
+                host,
                 num_blocks: 0,
                 payload: None,
             };
@@ -199,6 +217,7 @@ impl Patch {
         let patch = Patch {
             head_hash,
             head_created,
+            host,
             num_blocks,
             payload,
         };

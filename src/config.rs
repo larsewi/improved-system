@@ -36,9 +36,20 @@ impl Default for CompressionConfig {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct HostConfig {
+    pub name: String,
+    #[serde(rename = "type", default = "default_field_type")]
+    pub field_type: String,
+    pub value: String,
+    #[serde(default)]
+    pub format: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct Config {
     #[serde(skip)]
     pub work_dir: PathBuf,
+    pub host: Option<HostConfig>,
     #[serde(default)]
     pub compression: CompressionConfig,
     pub tables: HashMap<String, TableConfig>,
@@ -128,6 +139,11 @@ impl Config {
                     );
                 }
             }
+        }
+
+        if let Some(ref host) = config.host {
+            crate::sql::SqlType::from_config(&host.field_type, host.format.as_deref())
+                .context("host.type")?;
         }
 
         if let Some(ref truncate) = config.truncate {
