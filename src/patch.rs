@@ -64,13 +64,13 @@ impl fmt::Display for Patch {
 fn consolidate(
     work_dir: &Path,
     head_block: Block,
-    last_known_hash: &str,
+    last_known: &str,
 ) -> Result<(u32, Vec<crate::proto::delta::Delta>)> {
     let mut current_hash = head_block.parent.clone();
     let mut current_block = head_block;
     let mut num_blocks: u32 = 1;
 
-    while current_hash != GENESIS_HASH && !current_hash.starts_with(last_known_hash) {
+    while current_hash != GENESIS_HASH && !current_hash.starts_with(last_known) {
         let block = Block::load(work_dir, &current_hash)?;
         let parent_hash = block.parent.clone();
         current_block = block.merge(current_block)?;
@@ -78,29 +78,22 @@ fn consolidate(
         current_hash = parent_hash;
     }
 
-    if !current_hash.starts_with(last_known_hash) {
-        bail!(
-            "Block starting with '{}' not found in chain",
-            last_known_hash
-        );
+    if !current_hash.starts_with(last_known) {
+        bail!("Block starting with '{}' not found in chain", last_known);
     }
 
     Ok((num_blocks, current_block.payload))
 }
 
-fn try_consolidate(
-    work_dir: &Path,
-    head_hash: &str,
-    last_known_hash: &str,
-) -> Result<ConsolidateResult> {
-    let block = Block::load(work_dir, head_hash)?;
-    let head_created = block.created;
+fn try_consolidate(work_dir: &Path, head: &str, last_known: &str) -> Result<ConsolidateResult> {
+    let block = Block::load(work_dir, head)?;
+    let created = block.created;
 
-    if head_hash.starts_with(last_known_hash) {
-        return Ok((head_created, 0, None));
+    if head.starts_with(last_known) {
+        return Ok((created, 0, None));
     }
 
-    let (num_blocks, mut deltas) = consolidate(work_dir, block, last_known_hash)?;
+    let (num_blocks, mut deltas) = consolidate(work_dir, block, last_known)?;
 
     // Strip data the receiver doesn't need — patches are fully consolidated
     // so the receiver only needs keys + changed values.
@@ -126,18 +119,18 @@ fn try_consolidate(
         _ => Payload::Deltas(deltas_payload),
     };
 
-    Ok((head_created, num_blocks, Some(payload)))
+    Ok((created, num_blocks, Some(payload)))
 }
 
-fn full_state_patch(work_dir: &Path, head_hash: &str, host: Option<Host>) -> Result<Patch> {
-    let head_created = Block::load(work_dir, head_hash)
+fn full_state_patch(work_dir: &Path, head: &str, host: Option<Host>) -> Result<Patch> {
+    let created = Block::load(work_dir, head)
         .ok()
-        .and_then(|b| b.created);
+        .and_then(|block| block.created);
     let state =
         state::State::load(work_dir)?.context("No STATE file found for full state patch")?;
     let patch = Patch {
-        head: head_hash.to_string(),
-        created: head_created,
+        head: head.to_string(),
+        created,
         host,
         num_blocks: 0,
         payload: Some(Payload::State(crate::proto::state::State::from(state))),
