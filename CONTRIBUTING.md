@@ -85,7 +85,7 @@ replaying changes on a target database. For deltas payloads it generates a
 transaction with `DELETE`, `INSERT`, and `UPDATE` statements (in that order).
 For full-state payloads it generates `TRUNCATE` followed by `INSERT` statements.
 Column types defined in the config control how values are formatted in the SQL
-output (quoting for `TEXT`, bare numbers for `INTEGER`, etc.).
+output (quoting for `TEXT`, bare numbers for `NUMBER`, etc.).
 
 When a patch carries a host identifier (see `[host]` config section in
 [README.md](README.md)), the host column is injected into all SQL output:

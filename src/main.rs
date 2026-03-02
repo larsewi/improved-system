@@ -128,7 +128,7 @@ header = true
 
 [[tables.products.fields]]
 name = "id"
-type = "INTEGER"
+type = "NUMBER"
 primary-key = true
 
 [[tables.products.fields]]
@@ -137,7 +137,7 @@ type = "TEXT"
 
 [[tables.products.fields]]
 name = "price"
-type = "FLOAT"
+type = "NUMBER"
 "#,
     )?;
 

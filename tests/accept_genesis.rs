@@ -19,7 +19,7 @@ fn test_empty_patch_before_any_blocks() {
 [tables.users]
 source = "users.csv"
 fields = [
-    { name = "id", type = "INTEGER", primary-key = true },
+    { name = "id", type = "NUMBER", primary-key = true },
     { name = "name", type = "TEXT" },
 ]
 "#,
@@ -48,7 +48,7 @@ fn test_genesis_block_creation() {
 [tables.users]
 source = "users.csv"
 fields = [
-    { name = "id", type = "INTEGER", primary-key = true },
+    { name = "id", type = "NUMBER", primary-key = true },
     { name = "name", type = "TEXT" },
 ]
 "#,
@@ -74,7 +74,7 @@ fn test_genesis_patch_all_inserts() {
 [tables.users]
 source = "users.csv"
 fields = [
-    { name = "id", type = "INTEGER", primary-key = true },
+    { name = "id", type = "NUMBER", primary-key = true },
     { name = "name", type = "TEXT" },
 ]
 "#,
@@ -119,7 +119,7 @@ fn test_noop_patch_when_at_head() {
 [tables.users]
 source = "users.csv"
 fields = [
-    { name = "id", type = "INTEGER", primary-key = true },
+    { name = "id", type = "NUMBER", primary-key = true },
     { name = "name", type = "TEXT" },
 ]
 "#,

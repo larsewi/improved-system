@@ -18,7 +18,7 @@ fn test_two_blocks_insert_delete_update() {
 [tables.users]
 source = "users.csv"
 fields = [
-    { name = "id", type = "INTEGER", primary-key = true },
+    { name = "id", type = "NUMBER", primary-key = true },
     { name = "name", type = "TEXT" },
 ]
 "#,
@@ -79,7 +79,7 @@ fn test_three_blocks_chain_consolidation() {
 [tables.users]
 source = "users.csv"
 fields = [
-    { name = "id", type = "INTEGER", primary-key = true },
+    { name = "id", type = "NUMBER", primary-key = true },
     { name = "name", type = "TEXT" },
     { name = "email", type = "TEXT" },
 ]

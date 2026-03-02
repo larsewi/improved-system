@@ -62,8 +62,10 @@ Config can be `config.toml` or `config.json`.
 
 - Each table must have at least one field marked `primary-key = true`
 - Field names within a table must be unique
-- The type field maps table enties to the correct SQL database types
-- Some type fields require a format specifier
+- The type field controls how values are quoted in generated SQL. These are not
+  database column types — your database may use any compatible type (e.g.
+  `INTEGER`, `FLOAT`, `TIMESTAMP`). It is your responsibility to ensure the
+  quoted literals are valid for your target database type.
 
 ```toml
 [tables.products]
@@ -72,7 +74,7 @@ header = true
 
 [[tables.products.fields]]
 name = "id"
-type = "INTEGER"
+type = "NUMBER"
 primary-key = true
 
 [[tables.products.fields]]
@@ -81,19 +83,14 @@ type = "TEXT"
 
 [[tables.products.fields]]
 name = "price"
-type = "FLOAT"
+type = "NUMBER"
 ```
 
-| Type       | SQL literal             | Notes                                        |
-|------------|-------------------------|----------------------------------------------|
-| `TEXT`     | `'value'`               | Single quotes, escaped                       |
-| `INTEGER`  | `42`                    | Validated as `i64`                           |
-| `FLOAT`    | `3.14`                  | Validated as `f64`                           |
-| `BOOLEAN`  | `TRUE`/`FALSE`          | Accepts `true/false`, `1/0`, `t/f`, `yes/no` |
-| `BINARY`   | `'\xDEADBEEF'`          | Hex-encoded input                            |
-| `DATE`     | `'2024-01-15'`          | Parsed with `format` (default `%Y-%m-%d`)    |
-| `TIME`     | `'10:30:00'`            | Parsed with `format` (default `%H:%M:%S`)    |
-| `DATETIME` | `'2024-01-15 10:30:00'` | Parsed with `format` or as unix epoch        |
+| Type      | SQL literal    | Notes                                        |
+|-----------|----------------|----------------------------------------------|
+| `TEXT`    | `'value'`      | Single quotes, escaped                       |
+| `NUMBER`  | `42` / `3.14`  | Validated as finite `f64`                    |
+| `BOOLEAN` | `TRUE`/`FALSE` | Accepts `true/false`, `1/0`, `t/f`, `yes/no` |
 
 ### Host identifier
 
@@ -110,8 +107,7 @@ type = "TEXT"      # SQL type (default: TEXT)
 value = "agent-1"  # the identifier value
 ```
 
-The `type` field accepts the same values as table field types (TEXT, INTEGER,
-etc.). An optional `format` field is supported for DATE/TIME/DATETIME types.
+The `type` field accepts the same values as table field types.
 
 ### Compression
 

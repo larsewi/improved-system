@@ -17,8 +17,8 @@ fn test_composite_primary_keys() {
 [tables.enrollments]
 source = "enrollments.csv"
 fields = [
-    { name = "student_id", type = "INTEGER", primary-key = true },
-    { name = "course_id", type = "INTEGER", primary-key = true },
+    { name = "student_id", type = "NUMBER", primary-key = true },
+    { name = "course_id", type = "NUMBER", primary-key = true },
     { name = "grade", type = "TEXT" },
 ]
 "#,

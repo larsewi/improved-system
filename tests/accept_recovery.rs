@@ -18,7 +18,7 @@ fn setup_users(work_dir: &std::path::Path) -> Config {
 [tables.users]
 source = "users.csv"
 fields = [
-    { name = "id", type = "INTEGER", primary-key = true },
+    { name = "id", type = "NUMBER", primary-key = true },
     { name = "name", type = "TEXT" },
 ]
 "#,

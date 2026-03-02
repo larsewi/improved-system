@@ -27,7 +27,7 @@ fn setup_workdir() -> tempfile::TempDir {
 [tables.t]
 source = \"t.csv\"
 fields = [
-    { name = \"id\", type = \"INTEGER\", primary-key = true },
+    { name = \"id\", type = \"NUMBER\", primary-key = true },
     { name = \"val\", type = \"TEXT\" },
 ]
 ",

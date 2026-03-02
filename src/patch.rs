@@ -23,7 +23,6 @@ impl From<&HostConfig> for Host {
             name: h.name.clone(),
             r#type: h.field_type.clone(),
             value: h.value.clone(),
-            format: h.format.clone().unwrap_or_default(),
         }
     }
 }

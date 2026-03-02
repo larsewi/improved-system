@@ -17,7 +17,7 @@ fn test_unchanged_csv_between_blocks() {
 [tables.users]
 source = "users.csv"
 fields = [
-    { name = "id", type = "INTEGER", primary-key = true },
+    { name = "id", type = "NUMBER", primary-key = true },
     { name = "name", type = "TEXT" },
 ]
 "#,

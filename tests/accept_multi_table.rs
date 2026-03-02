@@ -18,7 +18,7 @@ fn test_multiple_tables() {
 [tables.users]
 source = "users.csv"
 fields = [
-    { name = "id", type = "INTEGER", primary-key = true },
+    { name = "id", type = "NUMBER", primary-key = true },
     { name = "name", type = "TEXT" },
 ]
 
@@ -26,7 +26,7 @@ fields = [
 source = "products.csv"
 fields = [
     { name = "sku", type = "TEXT", primary-key = true },
-    { name = "price", type = "INTEGER" },
+    { name = "price", type = "NUMBER" },
 ]
 "#,
     );

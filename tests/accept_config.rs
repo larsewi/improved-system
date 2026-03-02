@@ -30,7 +30,7 @@ fn test_config_no_primary_key() {
 [tables.users]
 source = "users.csv"
 fields = [
-    { name = "id", type = "INTEGER" },
+    { name = "id", type = "NUMBER" },
     { name = "name", type = "TEXT" },
 ]
 "#,
@@ -53,7 +53,7 @@ fn test_config_duplicate_field_names() {
 [tables.users]
 source = "users.csv"
 fields = [
-    { name = "id", type = "INTEGER", primary-key = true },
+    { name = "id", type = "NUMBER", primary-key = true },
     { name = "id", type = "TEXT" },
 ]
 "#,
@@ -112,7 +112,7 @@ max-blocks = 0
 [tables.users]
 source = "users.csv"
 fields = [
-    { name = "id", type = "INTEGER", primary-key = true },
+    { name = "id", type = "NUMBER", primary-key = true },
     { name = "name", type = "TEXT" },
 ]
 "#,
@@ -139,7 +139,7 @@ max-age = "abc"
 [tables.users]
 source = "users.csv"
 fields = [
-    { name = "id", type = "INTEGER", primary-key = true },
+    { name = "id", type = "NUMBER", primary-key = true },
     { name = "name", type = "TEXT" },
 ]
 "#,
@@ -163,7 +163,7 @@ fn test_truncate_config_no_truncate_section() {
 [tables.users]
 source = "users.csv"
 fields = [
-    { name = "id", type = "INTEGER", primary-key = true },
+    { name = "id", type = "NUMBER", primary-key = true },
     { name = "name", type = "TEXT" },
 ]
 "#,
@@ -187,7 +187,7 @@ fn test_json_config_file() {
     "users": {
       "source": "users.csv",
       "fields": [
-        { "name": "id", "type": "INTEGER", "primary-key": true },
+        { "name": "id", "type": "NUMBER", "primary-key": true },
         { "name": "name", "type": "TEXT" }
       ]
     }

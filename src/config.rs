@@ -41,8 +41,6 @@ pub struct HostConfig {
     #[serde(rename = "type", default = "default_field_type")]
     pub field_type: String,
     pub value: String,
-    #[serde(default)]
-    pub format: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -63,8 +61,6 @@ pub struct FieldConfig {
     pub field_type: String,
     #[serde(rename = "primary-key", default)]
     pub primary_key: bool,
-    #[serde(default)]
-    pub format: Option<String>,
 }
 
 fn default_field_type() -> String {
@@ -142,8 +138,7 @@ impl Config {
         }
 
         if let Some(ref host) = config.host {
-            crate::sql::SqlType::from_config(&host.field_type, host.format.as_deref())
-                .context("host.type")?;
+            crate::sql::SqlType::from_config(&host.field_type).context("host.type")?;
         }
 
         if let Some(ref truncate) = config.truncate {

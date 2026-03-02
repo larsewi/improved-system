@@ -17,7 +17,7 @@ fn test_state_payload_when_smaller_than_deltas() {
 [tables.items]
 source = "items.csv"
 fields = [
-    { name = "id", type = "INTEGER", primary-key = true },
+    { name = "id", type = "NUMBER", primary-key = true },
     { name = "name", type = "TEXT" },
 ]
 "#,
