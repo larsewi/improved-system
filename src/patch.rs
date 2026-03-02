@@ -119,9 +119,9 @@ fn try_consolidate(
     let proto_state = state.map(crate::proto::state::State::from);
 
     let payload = match proto_state {
-        Some(s) if s.encoded_len() < deltas_payload.encoded_len() => {
+        Some(state_payload) if state_payload.encoded_len() < deltas_payload.encoded_len() => {
             log::info!("Using full state (smaller than consolidated deltas)");
-            Payload::State(s)
+            Payload::State(state_payload)
         }
         _ => Payload::Deltas(deltas_payload),
     };
