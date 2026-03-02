@@ -66,23 +66,22 @@ Config can be `config.toml` or `config.json`.
 - Some type fields require a format specifier
 
 ```toml
-[tables.employees]
-source = "employees.csv"    # relative to work dir, or absolute
+[tables.products]
+source = "products.csv"    # relative to work dir, or absolute
 header = true
 
-[[tables.employees.fields]]
-name = "employee_id"
+[[tables.products.fields]]
+name = "id"
 type = "INTEGER"
 primary-key = true
 
-[[tables.employees.fields]]
-name = "first_name"
+[[tables.products.fields]]
+name = "name"
 type = "TEXT"
 
-[[tables.employees.fields]]
-name = "hire_date"
-type = "DATE"
-format = "%Y-%m-%d"
+[[tables.products.fields]]
+name = "price"
+type = "FLOAT"
 ```
 
 | Type       | SQL literal             | Notes                                        |
