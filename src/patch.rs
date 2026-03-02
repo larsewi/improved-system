@@ -178,10 +178,28 @@ fn try_consolidate(
     Ok((head_created, num_blocks, Some(payload)))
 }
 
+fn full_state_patch(work_dir: &Path, head_hash: &str, host: Option<Host>) -> Result<Patch> {
+    let head_created = Block::load(work_dir, head_hash)
+        .ok()
+        .and_then(|b| b.created);
+    let state =
+        state::State::load(work_dir)?.context("No STATE file found for full state patch")?;
+    let patch = Patch {
+        head_hash: head_hash.to_string(),
+        head_created,
+        host,
+        num_blocks: 0,
+        payload: Some(Payload::State(crate::proto::state::State::from(state))),
+    };
+    log::debug!("Built patch:\n{}", patch);
+    Ok(patch)
+}
+
 impl Patch {
     pub fn create(config: &Config, last_known_hash: &str) -> Result<Patch> {
         let work_dir = &config.work_dir;
-        resolve_hash_prefix(work_dir, last_known_hash)?;
+
+        let resolved = resolve_hash_prefix(work_dir, last_known_hash);
 
         let head_hash = head::load(work_dir)?;
 
@@ -199,18 +217,30 @@ impl Patch {
             return Ok(patch);
         }
 
+        // If the reference block can't be resolved or is genesis, produce a
+        // full STATE payload (TRUNCATE + INSERT) which is always safe to apply
+        // regardless of current database contents.
+        let last_known_hash = match resolved {
+            Ok(hash) if hash != GENESIS_HASH => hash,
+            Ok(_) => {
+                log::info!("Reference is genesis, producing full state patch");
+                return full_state_patch(work_dir, &head_hash, host);
+            }
+            Err(e) => {
+                log::warn!(
+                    "Reference block not found, producing full state patch: {}",
+                    e
+                );
+                return full_state_patch(work_dir, &head_hash, host);
+            }
+        };
+
         let (head_created, num_blocks, payload) =
-            match try_consolidate(work_dir, &head_hash, last_known_hash) {
+            match try_consolidate(work_dir, &head_hash, &last_known_hash) {
                 Ok((head_created, num_blocks, payload)) => (head_created, num_blocks, payload),
                 Err(e) => {
                     log::warn!("Consolidation failed, falling back to full state: {}", e);
-                    let state = state::State::load(work_dir)?
-                        .context("Consolidation failed and no STATE file found for fallback")?;
-                    (
-                        None,
-                        0,
-                        Some(Payload::State(crate::proto::state::State::from(state))),
-                    )
+                    return full_state_patch(work_dir, &head_hash, host);
                 }
             };
 

@@ -34,15 +34,14 @@ fields = [
     let hash2 = Block::create(&config).unwrap();
     assert_ne!(hash1, hash2);
 
-    // Patch from genesis (consolidated 2 blocks)
-    // Merge rules: insert(Bob)+delete(Bob) = cancel (rule 6)
-    //              insert(Alice)+update(Alice->Alicia) = insert(Alicia) (rule 7)
-    // Net result: 3 inserts (Alicia, Charlie, Dave), 0 deletes, 0 updates
+    // Patch from genesis: full state (TRUNCATE + INSERT), always safe
+    // Current state: Alicia, Charlie, Dave
     let patch_full = Patch::create(&config, GENESIS_HASH).unwrap();
-    assert_eq!(patch_full.num_blocks, 2);
+    assert_eq!(patch_full.num_blocks, 0);
     assert_eq!(patch_full.head_hash, hash2);
 
     let sql_full = sql::patch_to_sql(&config, &patch_full).unwrap().unwrap();
+    assert_eq!(common::count_sql(&sql_full, "TRUNCATE"), 1);
     assert_eq!(common::count_sql(&sql_full, "INSERT INTO"), 3);
     assert_eq!(common::count_sql(&sql_full, "DELETE FROM"), 0);
     assert_eq!(common::count_sql(&sql_full, "UPDATE "), 0);
@@ -108,13 +107,14 @@ fields = [
     );
     let hash3 = Block::create(&config).unwrap();
 
-    // -- Patch from genesis (consolidated 3 blocks) --
-    // Final state: 2 rows. From genesis everything is inserts.
+    // -- Patch from genesis: full state (TRUNCATE + INSERT), always safe --
+    // Final state: 2 rows (Alice, Charles).
     let patch_genesis = Patch::create(&config, GENESIS_HASH).unwrap();
-    assert_eq!(patch_genesis.num_blocks, 3);
+    assert_eq!(patch_genesis.num_blocks, 0);
     assert_eq!(patch_genesis.head_hash, hash3);
 
     let sql_genesis = sql::patch_to_sql(&config, &patch_genesis).unwrap().unwrap();
+    assert_eq!(common::count_sql(&sql_genesis, "TRUNCATE"), 1);
     assert_eq!(common::count_sql(&sql_genesis, "INSERT INTO"), 2);
     assert_eq!(common::count_sql(&sql_genesis, "DELETE FROM"), 0);
     assert_eq!(common::count_sql(&sql_genesis, "UPDATE "), 0);

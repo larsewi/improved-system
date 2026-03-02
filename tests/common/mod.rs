@@ -63,5 +63,16 @@ pub fn assert_wire_roundtrip(config: &Config, patch: &Patch) {
 
     let sql_before = sql::patch_to_sql(config, patch).unwrap();
     let sql_after = sql::patch_to_sql(config, &decoded).unwrap();
-    assert_eq!(sql_before, sql_after, "SQL mismatch after wire roundtrip");
+
+    match (&sql_before, &sql_after) {
+        (Some(before), Some(after)) => {
+            let stmts_before = parse_sql_statements(before);
+            let stmts_after = parse_sql_statements(after);
+            assert_eq!(
+                stmts_before, stmts_after,
+                "SQL mismatch after wire roundtrip"
+            );
+        }
+        _ => assert_eq!(sql_before, sql_after, "SQL mismatch after wire roundtrip"),
+    }
 }

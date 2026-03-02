@@ -85,7 +85,7 @@ fields = [
     let hash = Block::create(&config).unwrap();
 
     let patch = Patch::create(&config, GENESIS_HASH).unwrap();
-    assert_eq!(patch.num_blocks, 1);
+    assert_eq!(patch.num_blocks, 0);
     assert_eq!(patch.head_hash, hash);
     assert!(patch.head_created.is_some());
 
@@ -93,11 +93,12 @@ fields = [
     assert!(sql.starts_with("BEGIN;\n"));
     assert!(sql.ends_with("COMMIT;\n"));
 
-    // Regardless of Deltas vs State payload, the SQL should insert both rows
+    // Full state patch: TRUNCATE + INSERT for all rows
     assert_eq!(common::count_sql(&sql, "INSERT INTO"), 2);
     common::assert_sql_statements(
         &sql,
         &[
+            r#"TRUNCATE "users";"#,
             r#"INSERT INTO "users" ("id", "name") VALUES (1, 'Alice');"#,
             r#"INSERT INTO "users" ("id", "name") VALUES (2, 'Bob');"#,
         ],

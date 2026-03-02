@@ -201,7 +201,7 @@ fn test_json_config_file() {
     let hash = Block::create(&config).unwrap();
 
     let patch = Patch::create(&config, GENESIS_HASH).unwrap();
-    assert_eq!(patch.num_blocks, 1);
+    assert_eq!(patch.num_blocks, 0);
     assert_eq!(patch.head_hash, hash);
 
     let sql = sql::patch_to_sql(&config, &patch).unwrap().unwrap();

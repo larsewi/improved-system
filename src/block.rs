@@ -42,12 +42,18 @@ impl Block {
 
     pub fn create(config: &Config) -> Result<String> {
         let work_dir = &config.work_dir;
-        let previous_state =
-            state::State::load(work_dir).context("Failed to load previous state")?;
         let current_state =
             state::State::compute(config).context("Failed to compute current state")?;
 
         let parent_hash = head::load(work_dir).context("Failed to load head of chain")?;
+
+        // When starting a fresh chain (HEAD is genesis), ignore any stale STATE
+        // file so the first block captures the full initial state as inserts.
+        let previous_state = if parent_hash == utils::GENESIS_HASH {
+            None
+        } else {
+            state::State::load(work_dir).context("Failed to load previous state")?
+        };
         let created = Some(std::time::SystemTime::now().into());
 
         let deltas = delta::Delta::compute(previous_state, &current_state);
