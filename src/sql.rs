@@ -48,21 +48,25 @@ struct TableSchema {
 
 impl TableSchema {
     fn resolve(config: &Config, table_name: &str) -> Result<Self> {
-        let tc = config
+        let table_config = config
             .tables
             .get(table_name)
             .with_context(|| format!("table '{}' not found in config", table_name))?;
 
-        let field_cfg: std::collections::HashMap<&str, &crate::config::FieldConfig> =
-            tc.fields.iter().map(|f| (f.name.as_str(), f)).collect();
+        let field_config: std::collections::HashMap<&str, &crate::config::FieldConfig> =
+            table_config
+                .fields
+                .iter()
+                .map(|f| (f.name.as_str(), f))
+                .collect();
 
-        let pk = tc.primary_key();
-        let field_names = tc.field_names();
-        let pk_set: HashSet<&str> = pk.iter().map(|s| s.as_str()).collect();
+        let primary_key = table_config.primary_key();
+        let field_names = table_config.field_names();
+        let pimary_key_set: HashSet<&str> = primary_key.iter().map(|s| s.as_str()).collect();
 
         let mut fields = Vec::new();
-        for name in &pk {
-            let (type_str, null) = field_cfg
+        for name in &primary_key {
+            let (type_str, null) = field_config
                 .get(name.as_str())
                 .map(|f| (f.field_type.as_str(), f.null.clone()))
                 .unwrap_or(("TEXT", None));
@@ -75,8 +79,8 @@ impl TableSchema {
             });
         }
         for name in &field_names {
-            if !pk_set.contains(name.as_str()) {
-                let (type_str, null) = field_cfg
+            if !pimary_key_set.contains(name.as_str()) {
+                let (type_str, null) = field_config
                     .get(name.as_str())
                     .map(|f| (f.field_type.as_str(), f.null.clone()))
                     .unwrap_or(("TEXT", None));
@@ -92,7 +96,7 @@ impl TableSchema {
 
         Ok(TableSchema {
             table_name: table_name.to_string(),
-            num_pk: pk.len(),
+            num_pk: primary_key.len(),
             fields,
         })
     }
