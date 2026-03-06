@@ -137,10 +137,7 @@ impl Table {
                 .collect();
 
             if records.insert(primary_key.clone(), subsidiary).is_some() {
-                anyhow::bail!(
-                    "duplicate primary key {:?}",
-                    primary_key
-                );
+                anyhow::bail!("duplicate primary key {:?}", primary_key);
             }
         }
 

@@ -66,10 +66,8 @@ pub fn remove(work_dir: &Path, name: &str) -> Result<()> {
             return Ok(());
         }
         Err(e) => {
-            return Err(
-                anyhow::Error::new(e)
-                    .context(format!("Failed to remove file '{}'", path.display())),
-            );
+            return Err(anyhow::Error::new(e)
+                .context(format!("Failed to remove file '{}'", path.display())));
         }
     }
 
