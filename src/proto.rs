@@ -7,8 +7,8 @@ pub mod table {
 pub mod delta {
     include!(concat!(env!("OUT_DIR"), "/delta.rs"));
 }
-pub mod host {
-    include!(concat!(env!("OUT_DIR"), "/host.rs"));
+pub mod injected {
+    include!(concat!(env!("OUT_DIR"), "/injected.rs"));
 }
 // Prost generates a nested `mod patch` for the Patch message's `oneof` field,
 // which collides with this module name.

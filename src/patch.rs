@@ -8,21 +8,21 @@ use prost::Message;
 use prost_types::Timestamp;
 
 use crate::block::Block;
-use crate::config::{Config, HostConfig};
+use crate::config::{Config, InjectedFieldConfig};
 use crate::head;
 use crate::proto::delta::Deltas;
-use crate::proto::host::Host;
+use crate::proto::injected::InjectedField;
 use crate::proto::patch::patch::Payload;
 use crate::state;
 use crate::utils;
 use crate::utils::GENESIS_HASH;
 
-impl From<&HostConfig> for Host {
-    fn from(host_config: &HostConfig) -> Self {
-        Host {
-            name: host_config.name.clone(),
-            sql_type: host_config.sql_type.clone(),
-            value: host_config.value.clone(),
+impl From<&InjectedFieldConfig> for InjectedField {
+    fn from(config: &InjectedFieldConfig) -> Self {
+        InjectedField {
+            name: config.name.clone(),
+            sql_type: config.sql_type.clone(),
+            value: config.value.clone(),
         }
     }
 }
@@ -37,8 +37,8 @@ impl fmt::Display for Patch {
             Some(timestamp) => write!(f, "\n  Created: {}", utils::format_timestamp(timestamp))?,
             None => write!(f, "\n  Created: N/A")?,
         }
-        if let Some(host) = &self.host {
-            write!(f, "\n  Host: {} = {}", host.name, host.value)?;
+        for field in &self.injected_fields {
+            write!(f, "\n  Injected: {} = {}", field.name, field.value)?;
         }
         write!(f, "\n  Blocks: {}", self.num_blocks)?;
         match &self.payload {
@@ -121,7 +121,11 @@ fn try_consolidate(work_dir: &Path, head: &str, last_known: &str) -> Result<Cons
     Ok((created, num_blocks, Some(payload)))
 }
 
-fn full_state_patch(work_dir: &Path, head: &str, host: Option<Host>) -> Result<Patch> {
+fn full_state_patch(
+    work_dir: &Path,
+    head: &str,
+    injected_fields: Vec<InjectedField>,
+) -> Result<Patch> {
     let created = Block::load(work_dir, head)
         .ok()
         .and_then(|block| block.created);
@@ -130,7 +134,7 @@ fn full_state_patch(work_dir: &Path, head: &str, host: Option<Host>) -> Result<P
     let patch = Patch {
         head: head.to_string(),
         created,
-        host,
+        injected_fields,
         num_blocks: 0,
         payload: Some(Payload::State(crate::proto::state::State::from(state))),
     };
@@ -146,13 +150,17 @@ impl Patch {
 
         let head = head::load(work_dir)?;
 
-        let host = config.host.as_ref().map(Host::from);
+        let injected_fields: Vec<InjectedField> = config
+            .injected_fields
+            .iter()
+            .map(InjectedField::from)
+            .collect();
 
         if head == GENESIS_HASH {
             let patch = Patch {
                 head,
                 created: None,
-                host,
+                injected_fields,
                 num_blocks: 0,
                 payload: None,
             };
@@ -167,14 +175,14 @@ impl Patch {
             Ok(hash) if hash != GENESIS_HASH => hash,
             Ok(_) => {
                 log::info!("Reference is genesis, producing full state patch");
-                return full_state_patch(work_dir, &head, host);
+                return full_state_patch(work_dir, &head, injected_fields);
             }
             Err(e) => {
                 log::warn!(
                     "Reference block not found, producing full state patch: {}",
                     e
                 );
-                return full_state_patch(work_dir, &head, host);
+                return full_state_patch(work_dir, &head, injected_fields);
             }
         };
 
@@ -182,14 +190,14 @@ impl Patch {
             Ok((head_created, num_blocks, payload)) => (head_created, num_blocks, payload),
             Err(e) => {
                 log::warn!("Consolidation failed, falling back to full state: {}", e);
-                return full_state_patch(work_dir, &head, host);
+                return full_state_patch(work_dir, &head, injected_fields);
             }
         };
 
         let patch = Patch {
             head,
             created,
-            host,
+            injected_fields,
             num_blocks,
             payload,
         };

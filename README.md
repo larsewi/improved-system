@@ -106,22 +106,28 @@ fields = [
 ]
 ```
 
-### Host identifier
+### Injected fields
 
-An optional `[host]` section embeds a host identifier in every patch. When
-present, `patch_to_sql` injects the host as an extra column in all generated SQL
-statements (INSERT values, DELETE/UPDATE WHERE clauses). State-payload patches
-use `DELETE FROM ... WHERE host = ...` instead of `TRUNCATE` so that other
-agents' data is preserved.
+Optional `[[injected-fields]]` entries add static columns to all generated SQL.
+Each entry becomes an extra column in INSERT statements and an extra condition in
+DELETE/UPDATE WHERE clauses. When any injected fields are configured,
+state-payload patches use `DELETE FROM ... WHERE ...` instead of `TRUNCATE` so
+that other agents' data is preserved.
 
 ```toml
-[host]
-name = "host"      # column name in the target database
-type = "TEXT"      # SQL type (default: TEXT)
-value = "agent-1"  # the identifier value
+[[injected-fields]]
+name = "host"         # column name in the target database
+type = "TEXT"         # SQL type (default: TEXT)
+value = "agent-1"    # the static value
+
+[[injected-fields]]
+name = "environment"
+type = "TEXT"
+value = "production"
 ```
 
-The `type` field accepts the same values as table field types.
+The `type` field accepts the same values as table field types (`TEXT`, `NUMBER`,
+`BOOLEAN`).
 
 ### Compression
 

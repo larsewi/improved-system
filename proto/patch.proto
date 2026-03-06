@@ -3,7 +3,7 @@ syntax = "proto3";
 package patch;
 
 import "delta.proto";
-import "host.proto";
+import "injected.proto";
 import "state.proto";
 import "google/protobuf/timestamp.proto";
 
@@ -13,8 +13,8 @@ message Patch {
   string head = 1;
   // Timestamp when the HEAD block was created.
   google.protobuf.Timestamp created = 2;
-  // Optional host identifier. When set, SQL output includes this as an extra column.
-  host.Host host = 3;
+  // Static fields injected into all SQL output (extra columns in INSERT, conditions in WHERE).
+  repeated injected.InjectedField injected_fields = 3;
   // The number of blocks that were merged to produce this patch.
   uint32 num_blocks = 4;
   // The payload is either merged deltas or a full state snapshot (fallback).

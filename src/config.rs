@@ -36,7 +36,7 @@ impl Default for CompressionConfig {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct HostConfig {
+pub struct InjectedFieldConfig {
     pub name: String,
     #[serde(rename = "type", default = "default_sql_type")]
     pub sql_type: String,
@@ -47,7 +47,8 @@ pub struct HostConfig {
 pub struct Config {
     #[serde(skip)]
     pub work_dir: PathBuf,
-    pub host: Option<HostConfig>,
+    #[serde(default, rename = "injected-fields")]
+    pub injected_fields: Vec<InjectedFieldConfig>,
     #[serde(default)]
     pub compression: CompressionConfig,
     pub tables: HashMap<String, TableConfig>,
@@ -146,8 +147,17 @@ impl Config {
             }
         }
 
-        if let Some(ref host) = config.host {
-            crate::sql::SqlType::from_config(&host.sql_type).context("host.type")?;
+        let mut injected_names = HashSet::new();
+        for (index, field) in config.injected_fields.iter().enumerate() {
+            if !injected_names.insert(&field.name) {
+                bail!(
+                    "injected-fields[{}]: duplicate field name '{}'",
+                    index,
+                    field.name
+                );
+            }
+            crate::sql::SqlType::from_config(&field.sql_type)
+                .with_context(|| format!("injected-fields[{}].type", index))?;
         }
 
         if let Some(ref truncate) = config.truncate {

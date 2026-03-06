@@ -7,7 +7,7 @@ use leech2::sql;
 use leech2::utils::GENESIS_HASH;
 
 #[test]
-fn test_host_delta_sql() {
+fn test_injected_field_delta_sql() {
     let tmp = tempfile::tempdir().unwrap();
     let work_dir = tmp.path();
 
@@ -15,7 +15,7 @@ fn test_host_delta_sql() {
         work_dir,
         "config.toml",
         r#"
-[host]
+[[injected-fields]]
 name = "host"
 type = "TEXT"
 value = "agent-1"
@@ -46,7 +46,7 @@ fields = [
     );
     Block::create(&config).unwrap();
 
-    // Patch from hash1: 1 insert, 1 delete, 1 update — all with host
+    // Patch from hash1: 1 insert, 1 delete, 1 update — all with injected field
     let patch = Patch::create(&config, &hash1).unwrap();
     let sql = sql::patch_to_sql(&config, &patch).unwrap().unwrap();
 
@@ -64,7 +64,7 @@ fields = [
 }
 
 #[test]
-fn test_host_state_sql() {
+fn test_injected_field_state_sql() {
     let tmp = tempfile::tempdir().unwrap();
     let work_dir = tmp.path();
 
@@ -72,7 +72,7 @@ fn test_host_state_sql() {
         work_dir,
         "config.toml",
         r#"
-[host]
+[[injected-fields]]
 name = "host"
 type = "TEXT"
 value = "agent-1"
@@ -96,24 +96,25 @@ fields = [
     let patch = Patch::create(&config, GENESIS_HASH).unwrap();
     let sql = sql::patch_to_sql(&config, &patch).unwrap().unwrap();
 
-    // Regardless of delta vs state payload, host should be present
+    // Regardless of delta vs state payload, injected field should be present
     assert!(sql.contains(r#""host""#), "SQL should contain host column");
     assert!(sql.contains("'agent-1'"), "SQL should contain host value");
 
-    // If state payload, should use DELETE WHERE instead of TRUNCATE
-    if sql.contains("TRUNCATE") {
-        panic!("With host configured, state payload should use DELETE WHERE, not TRUNCATE");
-    }
+    // With injected fields, should use DELETE WHERE instead of TRUNCATE
+    assert!(
+        !sql.contains("TRUNCATE"),
+        "With injected fields, state payload should use DELETE WHERE, not TRUNCATE"
+    );
 
     common::assert_wire_roundtrip(&config, &patch);
 }
 
 #[test]
-fn test_no_host_unchanged_sql() {
+fn test_no_injected_fields_unchanged_sql() {
     let tmp = tempfile::tempdir().unwrap();
     let work_dir = tmp.path();
 
-    // No [host] section
+    // No [[injected-fields]] section
     common::write_config(
         work_dir,
         "config.toml",
@@ -134,7 +135,7 @@ fields = [
     let patch = Patch::create(&config, GENESIS_HASH).unwrap();
     let sql = sql::patch_to_sql(&config, &patch).unwrap().unwrap();
 
-    // Without host config, SQL should not contain any host column
+    // Without injected fields, SQL should not contain any host column
     assert!(
         !sql.contains(r#""host""#),
         "SQL should not contain host column when not configured"
@@ -142,7 +143,7 @@ fields = [
 }
 
 #[test]
-fn test_host_integer_type() {
+fn test_injected_field_integer_type() {
     let tmp = tempfile::tempdir().unwrap();
     let work_dir = tmp.path();
 
@@ -150,7 +151,7 @@ fn test_host_integer_type() {
         work_dir,
         "config.toml",
         r#"
-[host]
+[[injected-fields]]
 name = "agent_id"
 type = "NUMBER"
 value = "42"
@@ -171,10 +172,123 @@ fields = [
     let patch = Patch::create(&config, GENESIS_HASH).unwrap();
     let sql = sql::patch_to_sql(&config, &patch).unwrap().unwrap();
 
-    // Integer host should not be quoted
+    // Integer injected field should not be quoted
     assert!(
         sql.contains(r#""agent_id""#),
         "SQL should contain agent_id column"
     );
-    assert!(sql.contains("42"), "SQL should contain integer host value");
+    assert!(sql.contains("42"), "SQL should contain integer value");
+}
+
+#[test]
+fn test_multiple_injected_fields() {
+    let tmp = tempfile::tempdir().unwrap();
+    let work_dir = tmp.path();
+
+    common::write_config(
+        work_dir,
+        "config.toml",
+        r#"
+[[injected-fields]]
+name = "host"
+type = "TEXT"
+value = "agent-1"
+
+[[injected-fields]]
+name = "environment"
+type = "TEXT"
+value = "production"
+
+[tables.users]
+source = "users.csv"
+fields = [
+    { name = "id", type = "NUMBER", primary-key = true },
+    { name = "name", type = "TEXT" },
+]
+"#,
+    );
+
+    // Block 1: initial data (many rows so delta is smaller than state)
+    common::write_csv(
+        work_dir,
+        "users.csv",
+        "1,Alice\n2,Bob\n3,Charlie\n4,Dave\n5,Eve\n6,Frank\n7,Grace\n8,Heidi\n",
+    );
+    let config = Config::load(work_dir).unwrap();
+    let hash1 = Block::create(&config).unwrap();
+
+    // Block 2: update Alice->Alicia, delete Bob, insert Ivan
+    common::write_csv(
+        work_dir,
+        "users.csv",
+        "1,Alicia\n3,Charlie\n4,Dave\n5,Eve\n6,Frank\n7,Grace\n8,Heidi\n9,Ivan\n",
+    );
+    Block::create(&config).unwrap();
+
+    let patch = Patch::create(&config, &hash1).unwrap();
+    let sql = sql::patch_to_sql(&config, &patch).unwrap().unwrap();
+
+    // INSERT should have both injected columns prepended
+    assert!(sql.contains(
+        r#"INSERT INTO "users" ("host", "environment", "id", "name") VALUES ('agent-1', 'production', 9, 'Ivan');"#
+    ));
+
+    // DELETE should have both injected fields in WHERE
+    assert!(sql.contains(
+        r#"DELETE FROM "users" WHERE "id" = 2 AND "host" = 'agent-1' AND "environment" = 'production';"#
+    ));
+
+    // UPDATE should have both injected fields in WHERE
+    assert!(sql.contains(
+        r#"UPDATE "users" SET "name" = 'Alicia' WHERE "id" = 1 AND "host" = 'agent-1' AND "environment" = 'production';"#
+    ));
+
+    common::assert_wire_roundtrip(&config, &patch);
+}
+
+#[test]
+fn test_multiple_injected_fields_state_sql() {
+    let tmp = tempfile::tempdir().unwrap();
+    let work_dir = tmp.path();
+
+    common::write_config(
+        work_dir,
+        "config.toml",
+        r#"
+[[injected-fields]]
+name = "host"
+type = "TEXT"
+value = "agent-1"
+
+[[injected-fields]]
+name = "environment"
+type = "TEXT"
+value = "production"
+
+[tables.users]
+source = "users.csv"
+fields = [
+    { name = "id", type = "NUMBER", primary-key = true },
+    { name = "name", type = "TEXT" },
+]
+"#,
+    );
+
+    common::write_csv(work_dir, "users.csv", "1,Alice\n");
+    let config = Config::load(work_dir).unwrap();
+    Block::create(&config).unwrap();
+
+    let patch = Patch::create(&config, GENESIS_HASH).unwrap();
+    let sql = sql::patch_to_sql(&config, &patch).unwrap().unwrap();
+
+    // Should use DELETE WHERE with both conditions instead of TRUNCATE
+    assert!(
+        !sql.contains("TRUNCATE"),
+        "With injected fields, should use DELETE WHERE, not TRUNCATE"
+    );
+    assert!(sql.contains(
+        r#"DELETE FROM "users" WHERE "host" = 'agent-1' AND "environment" = 'production';"#
+    ));
+
+    common::assert_wire_roundtrip(&config, &patch);
 }

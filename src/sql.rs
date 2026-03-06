@@ -1,7 +1,6 @@
 use anyhow::{Context, Result, bail};
 
 use crate::config::Config;
-use crate::proto::host::Host;
 use crate::proto::patch::Patch;
 use crate::proto::patch::patch::Payload;
 
@@ -130,25 +129,27 @@ impl TableSchema {
     }
 }
 
-/// Resolved host identifier for SQL injection.
-struct HostInfo {
+/// A static field injected into all SQL output (resolved from proto).
+struct InjectedField {
     name: String,
     sql_type: SqlType,
     value: String,
 }
 
-impl HostInfo {
-    fn resolve(host: &Host) -> Result<Self> {
-        let sql_type = SqlType::from_config(&host.sql_type).context("host.type")?;
-        Ok(HostInfo {
-            name: host.name.clone(),
+impl InjectedField {
+    fn resolve(proto: &crate::proto::injected::InjectedField) -> Result<Self> {
+        let sql_type = SqlType::from_config(&proto.sql_type)
+            .with_context(|| format!("injected field '{}'", proto.name))?;
+        Ok(InjectedField {
+            name: proto.name.clone(),
             sql_type,
-            value: host.value.clone(),
+            value: proto.value.clone(),
         })
     }
 
     fn where_clause(&self) -> Result<String> {
-        let literal = quote_literal(&self.value, &self.sql_type).context("host value")?;
+        let literal = quote_literal(&self.value, &self.sql_type)
+            .with_context(|| format!("injected field '{}' value", self.name))?;
         Ok(format!("{} = {}", quote_ident(&self.name), literal))
     }
 
@@ -157,7 +158,8 @@ impl HostInfo {
     }
 
     fn quoted_value(&self) -> Result<String> {
-        quote_literal(&self.value, &self.sql_type).context("host value")
+        quote_literal(&self.value, &self.sql_type)
+            .with_context(|| format!("injected field '{}' value", self.name))
     }
 }
 
@@ -233,7 +235,7 @@ fn format_row(key: &[String], value: &[String], schema: &TableSchema) -> Result<
 fn delta_to_sql(
     config: &Config,
     delta: &crate::proto::delta::Delta,
-    host: Option<&HostInfo>,
+    injected_fields: &[InjectedField],
     out: &mut String,
 ) -> Result<()> {
     let schema = TableSchema::resolve(config, &delta.table_name)?;
@@ -252,8 +254,8 @@ fn delta_to_sql(
             })
             .collect::<Result<Vec<_>>>()?;
 
-        if let Some(host_info) = host {
-            where_parts.push(host_info.where_clause()?);
+        for injected in injected_fields {
+            where_parts.push(injected.where_clause()?);
         }
 
         out.push_str(&format!(
@@ -271,15 +273,15 @@ fn delta_to_sql(
             .map(|field| quote_ident(&field.name))
             .collect();
 
-        if let Some(host_info) = host {
-            column_parts.insert(0, host_info.quoted_column());
+        for (index, injected) in injected_fields.iter().enumerate() {
+            column_parts.insert(index, injected.quoted_column());
         }
         let columns = column_parts.join(", ");
 
         for entry in &delta.inserts {
             let mut literals = format_row(&entry.key, &entry.value, &schema)?;
-            if let Some(host_info) = host {
-                literals.insert(0, host_info.quoted_value()?);
+            for (index, injected) in injected_fields.iter().enumerate() {
+                literals.insert(index, injected.quoted_value()?);
             }
             out.push_str(&format!(
                 "INSERT INTO {} ({}) VALUES ({});\n",
@@ -316,8 +318,8 @@ fn delta_to_sql(
             })
             .collect::<Result<Vec<_>>>()?;
 
-        if let Some(host_info) = host {
-            where_parts.push(host_info.where_clause()?);
+        for injected in injected_fields {
+            where_parts.push(injected.where_clause()?);
         }
 
         out.push_str(&format!(
@@ -335,20 +337,25 @@ fn delta_to_sql(
 fn state_to_sql(
     config: &Config,
     state: &crate::proto::state::State,
-    host: Option<&HostInfo>,
+    injected_fields: &[InjectedField],
     out: &mut String,
 ) -> Result<()> {
     for (table_name, table) in &state.tables {
         let schema = TableSchema::resolve(config, table_name)?;
         let quoted_table = quote_ident(table_name);
 
-        match host {
-            Some(host_info) => out.push_str(&format!(
+        if injected_fields.is_empty() {
+            out.push_str(&format!("TRUNCATE {};\n", quoted_table));
+        } else {
+            let conditions: Vec<String> = injected_fields
+                .iter()
+                .map(|injected| injected.where_clause())
+                .collect::<Result<Vec<_>>>()?;
+            out.push_str(&format!(
                 "DELETE FROM {} WHERE {};\n",
                 quoted_table,
-                host_info.where_clause()?
-            )),
-            None => out.push_str(&format!("TRUNCATE {};\n", quoted_table)),
+                conditions.join(" AND ")
+            ));
         }
 
         if !table.entries.is_empty() {
@@ -358,15 +365,15 @@ fn state_to_sql(
                 .map(|field| quote_ident(&field.name))
                 .collect();
 
-            if let Some(host_info) = host {
-                column_parts.insert(0, host_info.quoted_column());
+            for (index, injected) in injected_fields.iter().enumerate() {
+                column_parts.insert(index, injected.quoted_column());
             }
             let columns = column_parts.join(", ");
 
             for entry in &table.entries {
                 let mut literals = format_row(&entry.key, &entry.value, &schema)?;
-                if let Some(host_info) = host {
-                    literals.insert(0, host_info.quoted_value()?);
+                for (index, injected) in injected_fields.iter().enumerate() {
+                    literals.insert(index, injected.quoted_value()?);
                 }
                 out.push_str(&format!(
                     "INSERT INTO {} ({}) VALUES ({});\n",
@@ -387,15 +394,18 @@ fn state_to_sql(
 pub fn patch_to_sql(config: &Config, patch: &Patch) -> Result<Option<String>> {
     log::info!("Converting patch to SQL: {}", patch);
 
-    let host = patch.host.as_ref().map(HostInfo::resolve).transpose()?;
-    let host_ref = host.as_ref();
+    let injected_fields: Vec<InjectedField> = patch
+        .injected_fields
+        .iter()
+        .map(InjectedField::resolve)
+        .collect::<Result<Vec<_>>>()?;
 
     match &patch.payload {
         Some(Payload::Deltas(deltas)) => {
             log::info!("Converting {} deltas to SQL", deltas.items.len());
             let mut sql = String::from("BEGIN;\n");
             for delta in &deltas.items {
-                delta_to_sql(config, delta, host_ref, &mut sql)?;
+                delta_to_sql(config, delta, &injected_fields, &mut sql)?;
             }
             sql.push_str("COMMIT;\n");
             Ok(Some(sql))
@@ -406,7 +416,7 @@ pub fn patch_to_sql(config: &Config, patch: &Patch) -> Result<Option<String>> {
                 state.tables.len()
             );
             let mut sql = String::from("BEGIN;\n");
-            state_to_sql(config, state, host_ref, &mut sql)?;
+            state_to_sql(config, state, &injected_fields, &mut sql)?;
             sql.push_str("COMMIT;\n");
             Ok(Some(sql))
         }
