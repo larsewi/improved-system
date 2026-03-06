@@ -1,5 +1,3 @@
-use std::collections::HashSet;
-
 use anyhow::{Context, Result, bail};
 
 use crate::config::Config;
@@ -40,20 +38,31 @@ struct FieldMeta {
 /// Schema information for a single table, resolved from config.
 struct TableSchema {
     table_name: String,
-    /// All fields in order: PK first, then subsidiary.
+    /// All fields in order: primary keys first, then subsidiary.
     fields: Vec<FieldMeta>,
     /// Number of primary key fields (the first `num_primary_keys` entries in `fields`).
     num_primary_keys: usize,
 }
 
 impl TableSchema {
+    /// Resolve a table's schema from config, producing an ordered field list.
+    ///
+    /// The config stores fields in an unordered flat list. This function
+    /// partitions them into primary-key fields followed by subsidiary fields
+    /// so that callers can split the `fields` vec at `num_primary_keys` (see
+    /// `primary_key_fields()` and `subsidiary_fields()`).
+    ///
+    /// Fields that appear in the config get their declared type and null
+    /// sentinel; fields referenced only by the primary key (not explicitly
+    /// configured) default to `TEXT` with no null sentinel.
     fn resolve(config: &Config, table_name: &str) -> Result<Self> {
         let table_config = config
             .tables
             .get(table_name)
             .with_context(|| format!("table '{}' not found in config", table_name))?;
 
-        let field_config: std::collections::HashMap<&str, &crate::config::FieldConfig> =
+        // Build a name→config lookup so we can resolve type/null for each field.
+        let field_configs: std::collections::HashMap<&str, &crate::config::FieldConfig> =
             table_config
                 .fields
                 .iter()
@@ -62,14 +71,19 @@ impl TableSchema {
 
         let primary_key = table_config.primary_key();
         let field_names = table_config.field_names();
-        let primary_key_set: HashSet<&str> = primary_key.iter().map(|s| s.as_str()).collect();
 
+        // First pass: add primary key fields in their declared order.
         let mut fields = Vec::new();
         for name in &primary_key {
-            let (type_str, null) = field_config
-                .get(name.as_str())
-                .map(|field| (field.field_type.as_str(), field.null.clone()))
-                .unwrap_or(("TEXT", None));
+            let field = field_configs.get(name.as_str());
+            let type_str = match field {
+                Some(f) => f.field_type.as_str(),
+                None => "TEXT",
+            };
+            let null = match field {
+                Some(f) => f.null.clone(),
+                None => None,
+            };
             let sql_type =
                 SqlType::from_config(type_str).with_context(|| format!("field '{}'", name))?;
             fields.push(FieldMeta {
@@ -78,12 +92,18 @@ impl TableSchema {
                 null,
             });
         }
+        // Second pass: append subsidiary (non-PK) fields in their declared order.
         for name in &field_names {
-            if !primary_key_set.contains(name.as_str()) {
-                let (type_str, null) = field_config
-                    .get(name.as_str())
-                    .map(|field| (field.field_type.as_str(), field.null.clone()))
-                    .unwrap_or(("TEXT", None));
+            if !primary_key.contains(name) {
+                let field = field_configs.get(name.as_str());
+                let type_str = match field {
+                    Some(f) => f.field_type.as_str(),
+                    None => "TEXT",
+                };
+                let null = match field {
+                    Some(f) => f.null.clone(),
+                    None => None,
+                };
                 let sql_type =
                     SqlType::from_config(type_str).with_context(|| format!("field '{}'", name))?;
                 fields.push(FieldMeta {
