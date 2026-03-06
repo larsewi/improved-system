@@ -129,8 +129,7 @@ fn try_consolidate(work_dir: &Path, head: &str, last_known: &str) -> Result<Cons
     let state = state::State::load(work_dir)?;
     let state_tables: HashMap<String, crate::proto::table::Table> = state
         .map(|s| {
-            let proto = crate::proto::state::State::from(s);
-            proto
+            crate::proto::state::State::from(s)
                 .tables
                 .into_iter()
                 .map(|t| (t.table_name.clone(), t))
