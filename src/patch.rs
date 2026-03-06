@@ -1,5 +1,6 @@
 pub use crate::proto::patch::Patch;
 
+use std::collections::HashMap;
 use std::fmt;
 use std::path::Path;
 
@@ -9,10 +10,9 @@ use prost_types::Timestamp;
 
 use crate::block::Block;
 use crate::config::{Config, InjectedFieldConfig};
+use crate::delta::Delta;
 use crate::head;
-use crate::proto::delta::Deltas;
 use crate::proto::injected::Field;
-use crate::proto::patch::patch::Payload;
 use crate::state;
 use crate::utils;
 use crate::utils::GENESIS_HASH;
@@ -27,8 +27,6 @@ impl From<&InjectedFieldConfig> for Field {
     }
 }
 
-type ConsolidateResult = (Option<Timestamp>, u32, Option<Payload>);
-
 impl fmt::Display for Patch {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Patch:")?;
@@ -41,84 +39,150 @@ impl fmt::Display for Patch {
             write!(f, "\n  Injected: {} = {}", field.name, field.value)?;
         }
         write!(f, "\n  Blocks: {}", self.num_blocks)?;
-        match &self.payload {
-            Some(Payload::Deltas(deltas)) => {
-                write!(f, "\n  Payload ({} deltas):", deltas.items.len())?;
-                for delta in &deltas.items {
-                    write!(f, "\n    {}", utils::indent(&delta.to_string(), "    "))?;
-                }
+        if !self.deltas.is_empty() {
+            write!(f, "\n  Deltas ({}):", self.deltas.len())?;
+            for delta in &self.deltas {
+                write!(f, "\n    {}", utils::indent(&delta.to_string(), "    "))?;
             }
-            Some(Payload::State(state)) => {
-                write!(f, "\n  Payload (full state):")?;
-                write!(f, "\n    {}", utils::indent(&state.to_string(), "    "))?;
+        }
+        if !self.states.is_empty() {
+            write!(f, "\n  States ({}):", self.states.len())?;
+            for table in &self.states {
+                write!(f, "\n    {}", utils::indent(&table.to_string(), "    "))?;
             }
-            None => {
-                write!(f, "\n  Payload: None")?;
-            }
+        }
+        if self.deltas.is_empty() && self.states.is_empty() {
+            write!(f, "\n  Payload: None")?;
         }
         Ok(())
     }
 }
 
-fn consolidate(
-    work_dir: &Path,
-    head_block: Block,
-    last_known: &str,
-) -> Result<(u32, Vec<crate::proto::delta::Delta>)> {
-    let mut current_hash = head_block.parent.clone();
-    let mut current_block = head_block;
-    let mut num_blocks: u32 = 1;
+/// Walk the chain from `head_block` back to (but not including) `last_known`,
+/// returning blocks oldest-first.
+fn collect_blocks(work_dir: &Path, head_block: Block, last_known: &str) -> Result<Vec<Block>> {
+    let mut blocks = vec![head_block];
+    let mut current_hash = blocks[0].parent.clone();
 
     while current_hash != GENESIS_HASH && !current_hash.starts_with(last_known) {
         let block = Block::load(work_dir, &current_hash)?;
-        let parent_hash = block.parent.clone();
-        current_block = block.merge(current_block)?;
-        num_blocks += 1;
-        current_hash = parent_hash;
+        current_hash = block.parent.clone();
+        blocks.push(block);
     }
 
     if !current_hash.starts_with(last_known) {
         bail!("Block starting with '{}' not found in chain", last_known);
     }
 
-    Ok((num_blocks, current_block.payload))
+    blocks.reverse(); // oldest first
+    Ok(blocks)
 }
 
+/// Merge a single table's proto deltas (oldest-first) into one consolidated delta.
+fn merge_table_deltas(
+    deltas: Vec<crate::proto::delta::Delta>,
+) -> Result<crate::proto::delta::Delta> {
+    let mut iter = deltas.into_iter();
+    let first = iter.next().context("no deltas to merge")?;
+    let mut merged = Delta::try_from(first)?;
+
+    for proto_delta in iter {
+        let child = Delta::try_from(proto_delta)?;
+        merged.merge(child)?;
+    }
+
+    Ok(crate::proto::delta::Delta::from(merged))
+}
+
+type ConsolidateResult = (
+    Option<Timestamp>,
+    u32,
+    Vec<crate::proto::delta::Delta>,
+    Vec<crate::proto::table::Table>,
+);
+
 fn try_consolidate(work_dir: &Path, head: &str, last_known: &str) -> Result<ConsolidateResult> {
-    let block = Block::load(work_dir, head)?;
-    let created = block.created;
+    let head_block = Block::load(work_dir, head)?;
+    let created = head_block.created;
 
     if head.starts_with(last_known) {
-        return Ok((created, 0, None));
+        return Ok((created, 0, Vec::new(), Vec::new()));
     }
 
-    let (num_blocks, mut deltas) = consolidate(work_dir, block, last_known)?;
+    let blocks = collect_blocks(work_dir, head_block, last_known)?;
+    let num_blocks = blocks.len() as u32;
 
-    // Strip data the receiver doesn't need — patches are fully consolidated
-    // so the receiver only needs keys + changed values.
-    for delta in &mut deltas {
-        // Deletes: receiver only needs the primary key, not the old row values.
-        for delete in &mut delta.deletes {
-            delete.value.clear();
-        }
-        for update in &mut delta.updates {
-            update.sparse_encode();
+    // Group deltas by table name, preserving block order (oldest first).
+    let mut table_order: Vec<String> = Vec::new();
+    let mut table_deltas: HashMap<String, Vec<crate::proto::delta::Delta>> = HashMap::new();
+    for block in blocks {
+        for delta in block.payload {
+            let name = delta.table_name.clone();
+            if !table_deltas.contains_key(&name) {
+                table_order.push(name.clone());
+            }
+            table_deltas.entry(name).or_default().push(delta);
         }
     }
 
-    let deltas_payload = Deltas { items: deltas };
+    // Load state for per-table size comparison and merge-failure fallback.
     let state = state::State::load(work_dir)?;
-    let proto_state = state.map(crate::proto::state::State::from);
+    let state_tables: HashMap<String, crate::proto::table::Table> = state
+        .map(|s| {
+            let proto = crate::proto::state::State::from(s);
+            proto
+                .tables
+                .into_iter()
+                .map(|t| (t.table_name.clone(), t))
+                .collect()
+        })
+        .unwrap_or_default();
 
-    let payload = match proto_state {
-        Some(state_payload) if state_payload.encoded_len() < deltas_payload.encoded_len() => {
-            log::info!("Using full state (smaller than consolidated deltas)");
-            Payload::State(state_payload)
+    let mut result_deltas = Vec::new();
+    let mut result_states = Vec::new();
+
+    for table_name in table_order {
+        let deltas = table_deltas.remove(&table_name).unwrap();
+        match merge_table_deltas(deltas) {
+            Ok(mut merged_delta) => {
+                // Strip data the receiver doesn't need.
+                for delete in &mut merged_delta.deletes {
+                    delete.value.clear();
+                }
+                for update in &mut merged_delta.updates {
+                    update.sparse_encode();
+                }
+
+                // Per-table size comparison: use full state if it's smaller.
+                if let Some(state_table) = state_tables.get(&table_name)
+                    && state_table.encoded_len() < merged_delta.encoded_len()
+                {
+                    log::info!(
+                        "Table '{}': using full state (smaller than consolidated delta)",
+                        table_name
+                    );
+                    result_states.push(state_table.clone());
+                    continue;
+                }
+
+                result_deltas.push(merged_delta);
+            }
+            Err(e) => {
+                log::warn!(
+                    "Merge failed for table '{}', falling back to full state: {}",
+                    table_name,
+                    e
+                );
+                if let Some(state_table) = state_tables.get(&table_name) {
+                    result_states.push(state_table.clone());
+                } else {
+                    log::warn!("Table '{}' not in STATE file, skipping", table_name);
+                }
+            }
         }
-        _ => Payload::Deltas(deltas_payload),
-    };
+    }
 
-    Ok((created, num_blocks, Some(payload)))
+    Ok((created, num_blocks, result_deltas, result_states))
 }
 
 fn full_state_patch(work_dir: &Path, head: &str, injected_fields: Vec<Field>) -> Result<Patch> {
@@ -127,12 +191,14 @@ fn full_state_patch(work_dir: &Path, head: &str, injected_fields: Vec<Field>) ->
         .and_then(|block| block.created);
     let state =
         state::State::load(work_dir)?.context("No STATE file found for full state patch")?;
+    let proto_state = crate::proto::state::State::from(state);
     let patch = Patch {
         head: head.to_string(),
         created,
         injected_fields,
         num_blocks: 0,
-        payload: Some(Payload::State(crate::proto::state::State::from(state))),
+        deltas: Vec::new(),
+        states: proto_state.tables,
     };
     log::debug!("Built patch:\n{}", patch);
     Ok(patch)
@@ -154,7 +220,8 @@ impl Patch {
                 created: None,
                 injected_fields,
                 num_blocks: 0,
-                payload: None,
+                deltas: Vec::new(),
+                states: Vec::new(),
             };
             log::debug!("Built patch:\n{}", patch);
             return Ok(patch);
@@ -178,20 +245,22 @@ impl Patch {
             }
         };
 
-        let (created, num_blocks, payload) = match try_consolidate(work_dir, &head, &last_known) {
-            Ok((head_created, num_blocks, payload)) => (head_created, num_blocks, payload),
-            Err(e) => {
-                log::warn!("Consolidation failed, falling back to full state: {}", e);
-                return full_state_patch(work_dir, &head, injected_fields);
-            }
-        };
+        let (created, num_blocks, deltas, states) =
+            match try_consolidate(work_dir, &head, &last_known) {
+                Ok(result) => result,
+                Err(e) => {
+                    log::warn!("Consolidation failed, falling back to full state: {}", e);
+                    return full_state_patch(work_dir, &head, injected_fields);
+                }
+            };
 
         let patch = Patch {
             head,
             created,
             injected_fields,
             num_blocks,
-            payload,
+            deltas,
+            states,
         };
 
         log::debug!("Built patch:\n{}", patch);

@@ -76,6 +76,7 @@ mod tests {
         let patch = result.unwrap();
         assert_eq!(patch.head, "");
         assert_eq!(patch.num_blocks, 0);
-        assert!(patch.payload.is_none());
+        assert!(patch.deltas.is_empty());
+        assert!(patch.states.is_empty());
     }
 }

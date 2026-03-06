@@ -32,7 +32,7 @@ fields = [
     assert_eq!(head::load(work_dir).unwrap(), GENESIS_HASH);
     let patch = Patch::create(&config, GENESIS_HASH).unwrap();
     assert_eq!(patch.num_blocks, 0);
-    assert!(patch.payload.is_none());
+    assert!(patch.deltas.is_empty() && patch.states.is_empty());
     assert_eq!(sql::patch_to_sql(&config, &patch).unwrap(), None);
 }
 
@@ -132,6 +132,6 @@ fields = [
     // No-op patch: last_known == HEAD, should return empty payload
     let patch = Patch::create(&config, &hash).unwrap();
     assert_eq!(patch.num_blocks, 0);
-    assert!(patch.payload.is_none());
+    assert!(patch.deltas.is_empty() && patch.states.is_empty());
     assert_eq!(sql::patch_to_sql(&config, &patch).unwrap(), None);
 }

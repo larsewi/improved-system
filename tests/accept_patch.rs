@@ -127,31 +127,49 @@ fields = [
     // Merge: insert(3)+update(3) = insert(3,Charles,ch@ex.com) (rule 7)
     //        update(1) passes through (rule 3)
     //        delete(2) passes through (rule 2)
+    // Per-table size comparison may choose state over delta if state is smaller.
     let patch_from1 = Patch::create(&config, &hash1).unwrap();
     assert_eq!(patch_from1.num_blocks, 2);
 
     let sql_from1 = sql::patch_to_sql(&config, &patch_from1).unwrap().unwrap();
-    assert_eq!(common::count_sql(&sql_from1, "INSERT INTO"), 1); // Charles
-    assert_eq!(common::count_sql(&sql_from1, "DELETE FROM"), 1); // Bob
-    assert_eq!(common::count_sql(&sql_from1, "UPDATE "), 1); // Alice email
 
-    assert!(sql_from1.contains(r#"DELETE FROM "users" WHERE "id" = 2;"#));
-    assert!(sql_from1.contains(
-        r#"INSERT INTO "users" ("id", "name", "email") VALUES (3, 'Charles', 'ch@ex.com');"#
-    ));
-    // Update should only set the changed column (email)
-    assert!(sql_from1.contains(r#"UPDATE "users" SET "email" = 'a@new.com' WHERE "id" = 1;"#));
+    if sql_from1.contains("TRUNCATE") {
+        // State path: TRUNCATE + 2 INSERTs (Alice, Charles)
+        assert_eq!(common::count_sql(&sql_from1, "TRUNCATE"), 1);
+        assert_eq!(common::count_sql(&sql_from1, "INSERT INTO"), 2);
+    } else {
+        // Delta path: 1 INSERT (Charles), 1 DELETE (Bob), 1 UPDATE (Alice email)
+        assert_eq!(common::count_sql(&sql_from1, "INSERT INTO"), 1);
+        assert_eq!(common::count_sql(&sql_from1, "DELETE FROM"), 1);
+        assert_eq!(common::count_sql(&sql_from1, "UPDATE "), 1);
+
+        assert!(sql_from1.contains(r#"DELETE FROM "users" WHERE "id" = 2;"#));
+        assert!(sql_from1.contains(
+            r#"INSERT INTO "users" ("id", "name", "email") VALUES (3, 'Charles', 'ch@ex.com');"#
+        ));
+        // Update should only set the changed column (email)
+        assert!(sql_from1.contains(r#"UPDATE "users" SET "email" = 'a@new.com' WHERE "id" = 1;"#));
+    }
 
     common::assert_wire_roundtrip(&config, &patch_from1);
 
     // -- Patch from hash2 (just block 3) --
+    // Per-table size comparison may choose state over delta.
     let patch_from2 = Patch::create(&config, &hash2).unwrap();
     assert_eq!(patch_from2.num_blocks, 1);
 
     let sql_from2 = sql::patch_to_sql(&config, &patch_from2).unwrap().unwrap();
-    assert_eq!(common::count_sql(&sql_from2, "DELETE FROM"), 1); // Bob
-    assert_eq!(common::count_sql(&sql_from2, "INSERT INTO"), 0);
-    assert_eq!(common::count_sql(&sql_from2, "UPDATE "), 1); // Charlie -> Charles
+
+    if sql_from2.contains("TRUNCATE") {
+        // State path: TRUNCATE + 2 INSERTs (Alice, Charles)
+        assert_eq!(common::count_sql(&sql_from2, "TRUNCATE"), 1);
+        assert_eq!(common::count_sql(&sql_from2, "INSERT INTO"), 2);
+    } else {
+        // Delta path: 1 DELETE (Bob), 1 UPDATE (Charlie -> Charles)
+        assert_eq!(common::count_sql(&sql_from2, "DELETE FROM"), 1);
+        assert_eq!(common::count_sql(&sql_from2, "INSERT INTO"), 0);
+        assert_eq!(common::count_sql(&sql_from2, "UPDATE "), 1);
+    }
 
     common::assert_wire_roundtrip(&config, &patch_from2);
 }

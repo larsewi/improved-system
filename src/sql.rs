@@ -2,7 +2,6 @@ use anyhow::{Context, Result, bail};
 
 use crate::config::Config;
 use crate::proto::patch::Patch;
-use crate::proto::patch::patch::Payload;
 
 /// SQL type mapping for converting CSV byte values to SQL literals.
 #[derive(Debug, Clone, PartialEq)]
@@ -333,55 +332,53 @@ fn delta_to_sql(
     Ok(())
 }
 
-/// Generate SQL statements for a full state (TRUNCATE/DELETE + INSERT per table).
-fn state_to_sql(
+/// Generate SQL statements for a single table's full state (TRUNCATE/DELETE + INSERT).
+fn state_table_to_sql(
     config: &Config,
-    state: &crate::proto::state::State,
+    table: &crate::proto::table::Table,
     injected_fields: &[InjectedField],
     out: &mut String,
 ) -> Result<()> {
-    for (table_name, table) in &state.tables {
-        let schema = TableSchema::resolve(config, table_name)?;
-        let quoted_table = quote_ident(table_name);
+    let schema = TableSchema::resolve(config, &table.table_name)?;
+    let quoted_table = quote_ident(&table.table_name);
 
-        if injected_fields.is_empty() {
-            out.push_str(&format!("TRUNCATE {};\n", quoted_table));
-        } else {
-            let conditions: Vec<String> = injected_fields
-                .iter()
-                .map(|injected| injected.where_clause())
-                .collect::<Result<Vec<_>>>()?;
-            out.push_str(&format!(
-                "DELETE FROM {} WHERE {};\n",
-                quoted_table,
-                conditions.join(" AND ")
-            ));
+    if injected_fields.is_empty() {
+        out.push_str(&format!("TRUNCATE {};\n", quoted_table));
+    } else {
+        let conditions: Vec<String> = injected_fields
+            .iter()
+            .map(|injected| injected.where_clause())
+            .collect::<Result<Vec<_>>>()?;
+        out.push_str(&format!(
+            "DELETE FROM {} WHERE {};\n",
+            quoted_table,
+            conditions.join(" AND ")
+        ));
+    }
+
+    if !table.entries.is_empty() {
+        let mut column_parts: Vec<String> = schema
+            .fields
+            .iter()
+            .map(|field| quote_ident(&field.name))
+            .collect();
+
+        for (index, injected) in injected_fields.iter().enumerate() {
+            column_parts.insert(index, injected.quoted_column());
         }
+        let columns = column_parts.join(", ");
 
-        if !table.entries.is_empty() {
-            let mut column_parts: Vec<String> = schema
-                .fields
-                .iter()
-                .map(|field| quote_ident(&field.name))
-                .collect();
-
+        for entry in &table.entries {
+            let mut literals = format_row(&entry.key, &entry.value, &schema)?;
             for (index, injected) in injected_fields.iter().enumerate() {
-                column_parts.insert(index, injected.quoted_column());
+                literals.insert(index, injected.quoted_value()?);
             }
-            let columns = column_parts.join(", ");
-
-            for entry in &table.entries {
-                let mut literals = format_row(&entry.key, &entry.value, &schema)?;
-                for (index, injected) in injected_fields.iter().enumerate() {
-                    literals.insert(index, injected.quoted_value()?);
-                }
-                out.push_str(&format!(
-                    "INSERT INTO {} ({}) VALUES ({});\n",
-                    quoted_table,
-                    columns,
-                    literals.join(", ")
-                ));
-            }
+            out.push_str(&format!(
+                "INSERT INTO {} ({}) VALUES ({});\n",
+                quoted_table,
+                columns,
+                literals.join(", ")
+            ));
         }
     }
 
@@ -394,37 +391,35 @@ fn state_to_sql(
 pub fn patch_to_sql(config: &Config, patch: &Patch) -> Result<Option<String>> {
     log::info!("Converting patch to SQL: {}", patch);
 
+    if patch.deltas.is_empty() && patch.states.is_empty() {
+        log::info!("Patch has no payload, nothing to convert");
+        return Ok(None);
+    }
+
     let injected_fields: Vec<InjectedField> = patch
         .injected_fields
         .iter()
         .map(InjectedField::resolve)
         .collect::<Result<Vec<_>>>()?;
 
-    match &patch.payload {
-        Some(Payload::Deltas(deltas)) => {
-            log::info!("Converting {} deltas to SQL", deltas.items.len());
-            let mut sql = String::from("BEGIN;\n");
-            for delta in &deltas.items {
-                delta_to_sql(config, delta, &injected_fields, &mut sql)?;
-            }
-            sql.push_str("COMMIT;\n");
-            Ok(Some(sql))
-        }
-        Some(Payload::State(state)) => {
-            log::info!(
-                "Converting full state ({} tables) to SQL",
-                state.tables.len()
-            );
-            let mut sql = String::from("BEGIN;\n");
-            state_to_sql(config, state, &injected_fields, &mut sql)?;
-            sql.push_str("COMMIT;\n");
-            Ok(Some(sql))
-        }
-        None => {
-            log::info!("Patch has no payload, nothing to convert");
-            Ok(None)
+    let mut sql = String::from("BEGIN;\n");
+
+    if !patch.deltas.is_empty() {
+        log::info!("Converting {} deltas to SQL", patch.deltas.len());
+        for delta in &patch.deltas {
+            delta_to_sql(config, delta, &injected_fields, &mut sql)?;
         }
     }
+
+    if !patch.states.is_empty() {
+        log::info!("Converting {} full state tables to SQL", patch.states.len());
+        for table in &patch.states {
+            state_table_to_sql(config, table, &injected_fields, &mut sql)?;
+        }
+    }
+
+    sql.push_str("COMMIT;\n");
+    Ok(Some(sql))
 }
 
 #[cfg(test)]

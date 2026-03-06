@@ -24,7 +24,7 @@ impl From<crate::proto::state::State> for State {
         let tables = proto
             .tables
             .into_iter()
-            .map(|(name, table)| (name, Table::from(table)))
+            .map(|proto_table| (proto_table.table_name.clone(), Table::from(proto_table)))
             .collect();
         State { tables }
     }
@@ -35,7 +35,11 @@ impl From<State> for crate::proto::state::State {
         let tables = state
             .tables
             .into_iter()
-            .map(|(name, table)| (name, crate::proto::table::Table::from(table)))
+            .map(|(name, table)| {
+                let mut proto_table = crate::proto::table::Table::from(table);
+                proto_table.table_name = name;
+                proto_table
+            })
             .collect();
         crate::proto::state::State { tables }
     }
@@ -44,11 +48,10 @@ impl From<State> for crate::proto::state::State {
 impl fmt::Display for crate::proto::state::State {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "State ({} tables):", self.tables.len())?;
-        let mut names: Vec<_> = self.tables.keys().collect();
-        names.sort();
-        for name in names {
-            let table = &self.tables[name];
-            write!(f, "\n  {} {}", name, indent(&table.to_string(), "  "))?;
+        let mut tables: Vec<_> = self.tables.iter().collect();
+        tables.sort_by_key(|t| &t.table_name);
+        for table in tables {
+            write!(f, "\n  {}", indent(&table.to_string(), "  "))?;
         }
         Ok(())
     }

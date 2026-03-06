@@ -109,7 +109,7 @@ fn test_head_file_deleted() {
 
     // Patch from GENESIS with HEAD=GENESIS → empty patch (no blocks exist)
     let patch = Patch::create(&config, GENESIS_HASH).unwrap();
-    assert!(patch.payload.is_none());
+    assert!(patch.deltas.is_empty() && patch.states.is_empty());
     assert_eq!(patch.num_blocks, 0);
 
     // Block::create should ignore stale STATE and capture full CSV as inserts

@@ -41,7 +41,10 @@ fields = [
     // If deltas win instead, SQL uses DELETE FROM pattern.
     let patch = Patch::create(&config, &hash1).unwrap();
     assert_eq!(patch.num_blocks, 1);
-    assert!(patch.payload.is_some(), "expected a payload");
+    assert!(
+        !patch.deltas.is_empty() || !patch.states.is_empty(),
+        "expected a payload"
+    );
 
     let sql = sql::patch_to_sql(&config, &patch).unwrap().unwrap();
 

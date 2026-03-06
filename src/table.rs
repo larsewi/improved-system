@@ -40,6 +40,7 @@ impl From<Table> for crate::proto::table::Table {
             .map(|(key, value)| Entry { key, value })
             .collect();
         crate::proto::table::Table {
+            table_name: String::new(),
             fields: table.fields,
             entries,
         }
@@ -48,7 +49,7 @@ impl From<Table> for crate::proto::table::Table {
 
 impl fmt::Display for crate::proto::table::Table {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "[{}]", self.fields.join(", "))?;
+        write!(f, "'{}' [{}]", self.table_name, self.fields.join(", "))?;
         for entry in &self.entries {
             write!(
                 f,

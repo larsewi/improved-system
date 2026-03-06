@@ -5,7 +5,6 @@ use anyhow::{Context, Result};
 use prost::Message;
 
 use crate::config::Config;
-use crate::delta;
 use crate::head;
 use crate::state;
 use crate::storage;
@@ -56,7 +55,7 @@ impl Block {
         };
         let created = Some(std::time::SystemTime::now().into());
 
-        let deltas = delta::Delta::compute(previous_state, &current_state);
+        let deltas = crate::delta::Delta::compute(previous_state, &current_state);
         let payload = deltas
             .into_iter()
             .map(crate::proto::delta::Delta::from)
@@ -89,27 +88,6 @@ impl Block {
         }
 
         Ok(hash)
-    }
-
-    pub fn merge(mut self, mut child: Block) -> Result<Block> {
-        for child_delta in child.payload.drain(..) {
-            if let Some(parent_delta) = self
-                .payload
-                .iter_mut()
-                .find(|delta| delta.table_name == child_delta.table_name)
-            {
-                let mut parent_domain: delta::Delta = std::mem::take(parent_delta).try_into()?;
-                let child_domain: delta::Delta = child_delta.try_into()?;
-                parent_domain
-                    .merge(child_domain)
-                    .context("Failed to merge deltas")?;
-                *parent_delta = parent_domain.into();
-            } else {
-                self.payload.push(child_delta);
-            }
-        }
-
-        Ok(self)
     }
 }
 

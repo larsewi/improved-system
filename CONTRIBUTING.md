@@ -43,24 +43,28 @@ Block:
 
 `Patch::create()` consolidates multiple blocks into a single patch by walking
 the chain from `HEAD` back to a last-known hash (typically the hash stored in
-`REPORTED`, or genesis on first run). At each step it merges the current block
-with its parent using 15 conflict-resolution rules (see
+`REPORTED`, or genesis on first run). It collects all blocks, groups their
+deltas by table name, and merges each table's delta chain independently using 15
+conflict-resolution rules (see
 [DELTA_MERGING_RULES.md](DELTA_MERGING_RULES.md)). Some rules handle
 non-conflicting scenarios seamlessly, while others detect unresolvable conflicts
 (e.g. double insert).
 
 When the reference hash is genesis or can't be resolved (e.g. the block was
 truncated), the library skips consolidation entirely and produces a full state
-snapshot. This guarantees TRUNCATE + INSERT SQL that is safe to apply regardless
-of what the target database currently contains. The same fallback applies when
-consolidation fails (e.g. a block in the chain is missing).
+snapshot for all tables. This guarantees TRUNCATE + INSERT SQL that is safe to
+apply regardless of what the target database currently contains. The same
+fallback applies when the block chain is broken (e.g. a block is missing).
 
-After merging, the patch is optimized: deletes are stripped down to keys only,
-and updates are sparse-encoded to include only changed columns. The library then
-compares the encoded size of the consolidated deltas against the full state and
-picks whichever is smaller.
+If merging fails for a single table (e.g. column mismatch after a config
+change), only that table falls back to full state — other tables keep their
+consolidated deltas. After merging, each table's delta is optimized: deletes are
+stripped down to keys only, and updates are sparse-encoded to include only
+changed columns. The library then compares each table's consolidated delta
+encoded size against its full state and picks whichever is smaller. This means a
+single patch can contain a mix of delta tables and full-state tables.
 
-Printing the patch shows either deltas or full state:
+Printing the patch shows any combination of deltas and states:
 
 ```
 Patch:
@@ -68,7 +72,7 @@ Patch:
   Created: 2025-06-15 08:30:00 UTC
   Injected: host = agent-1
   Blocks: 3
-  Payload (1 deltas):
+  Deltas (1):
     'employees' [employee_id, first_name, hire_date]
       Inserts (1):
         (3) Charlie, 2025-06-15
@@ -76,14 +80,18 @@ Patch:
         (2) _, _, _
       Updates (1):
         (1) _, Alice -> Alicia, _
+  States (1):
+    'departments' [dept_id, dept_name]
+      (HR) Human Resources
 ```
 
 ### patch_to_sql()
 
 `patch_to_sql()` converts an encoded patch into SQL statements suitable for
-replaying changes on a target database. For deltas payloads it generates a
-transaction with `DELETE`, `INSERT`, and `UPDATE` statements (in that order).
-For full-state payloads it generates `TRUNCATE` followed by `INSERT` statements.
+replaying changes on a target database. For delta tables it generates `DELETE`,
+`INSERT`, and `UPDATE` statements. For full-state tables it generates `TRUNCATE`
+followed by `INSERT` statements. A single patch may contain both delta and state
+tables, and all statements are wrapped in a single transaction.
 Column types defined in the config control how values are formatted in the SQL
 output (quoting for `TEXT`, bare numbers for `NUMBER`, etc.).
 
@@ -128,11 +136,11 @@ even when the block chain or metadata is incomplete.
   via block chain; STATE is not needed
 
 The key invariant: when the reference point is unknown or unreliable (genesis,
-unresolvable hash, broken chain), the patch always uses a **STATE payload**
-which generates `TRUNCATE + INSERT` SQL. This avoids duplicate-key violations
-that would occur if bare `INSERT` statements were applied to a database that
-already contains rows. When injected fields are configured, the state payload
-uses `DELETE FROM ... WHERE ...` instead of `TRUNCATE`, so only the matching
+unresolvable hash, broken chain), the patch always uses **full state** for all
+tables, which generates `TRUNCATE + INSERT` SQL. This avoids duplicate-key
+violations that would occur if bare `INSERT` statements were applied to a
+database that already contains rows. When injected fields are configured, state
+tables use `DELETE FROM ... WHERE ...` instead of `TRUNCATE`, so only the matching
 rows are replaced and other agents' data is preserved.
 
 See `tests/accept_recovery.rs` for acceptance tests covering these scenarios.
@@ -150,7 +158,7 @@ src/
   update.rs     Update type (key, changed indices, old/new values) Display impl
   delta.rs      Diff computation + merge logic (see DELTA_MERGING_RULES.md)
   block.rs      Content-addressable block creation and loading
-  patch.rs      Patch consolidation, payload selection
+  patch.rs      Patch consolidation, per-table payload selection
   head.rs       HEAD file read/write
   reported.rs   REPORTED file read/write (last reported patch hash)
   truncate.rs   History truncation (orphan, reported, max-blocks, max-age)
@@ -172,7 +180,7 @@ tests/          Acceptance tests
 - **State** (`src/state.rs`) -- Snapshot of all tables at a point in time. Serialized to protobuf and persisted as `STATE` file.
 - **Delta** (`src/delta.rs`) -- Diff between two states for a single table: inserts, deletes, and updates. Contains the merge logic implementing 15 rules (see [DELTA_MERGING_RULES.md](DELTA_MERGING_RULES.md)).
 - **Block** (`src/block.rs`) -- A content-addressable unit containing a timestamp, parent hash, and a list of deltas. Blocks form a linked chain. SHA-1 hashed and stored by hash.
-- **Patch** (`src/patch.rs`) -- Consolidates multiple blocks from HEAD back to a `last_known` hash by merging deltas. Chooses between sending consolidated deltas or full state based on encoded size.
+- **Patch** (`src/patch.rs`) -- Consolidates multiple blocks from HEAD back to a `last_known` hash by merging deltas per table independently. Each table's consolidated delta is compared against its full state, and the smaller representation is chosen. A single patch can contain a mix of delta and state tables.
 - **Head** (`src/head.rs`) -- Reads/writes the `HEAD` file tracking the current block hash.
 - **Storage** (`src/storage.rs`) -- File I/O with `fs2` file locking (exclusive for writes, shared for reads).
 
@@ -233,19 +241,22 @@ State::compute()       Collect all tables into a State
 Patch::create(last_known_hash)
     |
     v
-Walk chain: HEAD -> ... -> last_known
+Walk chain: HEAD -> ... -> last_known (collect blocks oldest-first)
     |
     v
-Block::merge() at each step (see DELTA_MERGING_RULES.md)
+Group deltas by table name
     |
     v
-Strip: key-only deletes, sparse updates
+Per table: Delta::merge() chain (see DELTA_MERGING_RULES.md)
+    |         (merge failure -> fall back to state for that table)
+    v
+Per table: strip (key-only deletes, sparse updates)
     |
     v
-Compare encoded sizes: deltas vs full state
+Per table: compare encoded sizes (delta vs state), pick smaller
     |
     v
-Patch { head, created, num_blocks, payload }
+Patch { head, created, num_blocks, deltas: [...], states: [...] }
     |
     v
 wire::encode_patch()  -->  protobuf + optional zstd
@@ -253,8 +264,9 @@ wire::encode_patch()  -->  protobuf + optional zstd
     v
 sql::patch_to_sql()
     |
-    +--> Deltas payload: BEGIN; DELETE...; INSERT...; UPDATE...; COMMIT;
-    +--> State payload:  BEGIN; TRUNCATE...; INSERT...; COMMIT;
+    +--> Delta tables: DELETE...; INSERT...; UPDATE...;
+    +--> State tables: TRUNCATE...; INSERT...;
+    +--> All wrapped in: BEGIN; ... COMMIT;
     (with injected fields: DELETE/UPDATE WHERE scoped by them, state uses DELETE WHERE instead of TRUNCATE)
 ```
 

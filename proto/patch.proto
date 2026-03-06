@@ -4,7 +4,7 @@ package patch;
 
 import "delta.proto";
 import "injected.proto";
-import "state.proto";
+import "table.proto";
 import "google/protobuf/timestamp.proto";
 
 // Patch represents the merged diff between two blocks in the chain.
@@ -17,11 +17,8 @@ message Patch {
   repeated injected.Field injected_fields = 3;
   // The number of blocks that were merged to produce this patch.
   uint32 num_blocks = 4;
-  // The payload is either merged deltas or a full state snapshot (fallback).
-  oneof payload {
-    // Merged deltas representing the combined changes between the two blocks.
-    delta.Deltas deltas = 5;
-    // Full state snapshot, used when delta merging fails due to conflicts.
-    state.State state = 6;
-  }
+  // Tables with incremental changes (each Delta carries its own table_name).
+  repeated delta.Delta deltas = 5;
+  // Tables requiring a full state snapshot (each Table carries its own table_name).
+  repeated table.Table states = 6;
 }

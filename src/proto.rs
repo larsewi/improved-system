@@ -10,9 +10,6 @@ pub mod delta {
 pub mod injected {
     include!(concat!(env!("OUT_DIR"), "/injected.rs"));
 }
-// Prost generates a nested `mod patch` for the Patch message's `oneof` field,
-// which collides with this module name.
-#[allow(clippy::module_inception)]
 pub mod patch {
     include!(concat!(env!("OUT_DIR"), "/patch.rs"));
 }
