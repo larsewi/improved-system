@@ -1,5 +1,7 @@
 # TODO
 
+## Investigate what happens if table configs don't match
+
 ## There should be a way to not report records that are too big
 
 ## There should be a way to filter records. E.g. they may contain sensitive data
