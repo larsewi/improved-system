@@ -75,13 +75,13 @@ impl TableSchema {
         // First pass: add primary key fields in their declared order.
         let mut fields = Vec::new();
         for name in &primary_key {
-            let field = field_configs.get(name.as_str());
-            let type_str = match field {
-                Some(f) => f.field_type.as_str(),
+            let field_config = field_configs.get(name.as_str());
+            let type_str = match field_config {
+                Some(field_config) => field_config.field_type.as_str(),
                 None => "TEXT",
             };
-            let null = match field {
-                Some(f) => f.null.clone(),
+            let null = match field_config {
+                Some(field_config) => field_config.null.clone(),
                 None => None,
             };
             let sql_type =
@@ -95,13 +95,13 @@ impl TableSchema {
         // Second pass: append subsidiary (non-PK) fields in their declared order.
         for name in &field_names {
             if !primary_key.contains(name) {
-                let field = field_configs.get(name.as_str());
-                let type_str = match field {
-                    Some(f) => f.field_type.as_str(),
+                let field_config = field_configs.get(name.as_str());
+                let type_str = match field_config {
+                    Some(field_config) => field_config.field_type.as_str(),
                     None => "TEXT",
                 };
-                let null = match field {
-                    Some(f) => f.null.clone(),
+                let null = match field_config {
+                    Some(field_config) => field_config.null.clone(),
                     None => None,
                 };
                 let sql_type =
