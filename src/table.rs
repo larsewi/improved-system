@@ -136,7 +136,12 @@ impl Table {
                 .map(|&i| record[i].to_string())
                 .collect();
 
-            records.insert(primary_key, subsidiary);
+            if records.insert(primary_key.clone(), subsidiary).is_some() {
+                anyhow::bail!(
+                    "duplicate primary key {:?}",
+                    primary_key
+                );
+            }
         }
 
         Ok(Table { fields, records })
