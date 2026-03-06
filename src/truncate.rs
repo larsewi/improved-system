@@ -74,7 +74,8 @@ pub fn run(config: &Config) -> Result<()> {
             }
         };
         let created = block.created.map(|ts| {
-            SystemTime::UNIX_EPOCH + std::time::Duration::new(ts.seconds as u64, ts.nanos as u32)
+            SystemTime::UNIX_EPOCH
+                + std::time::Duration::new(ts.seconds.max(0) as u64, ts.nanos.max(0) as u32)
         });
         let parent = block.parent.clone();
         reachable.insert(current_hash.clone());
