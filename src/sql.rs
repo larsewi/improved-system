@@ -77,7 +77,7 @@ impl TableSchema {
         for name in &primary_key {
             let field_config = field_configs.get(name.as_str());
             let type_str = match field_config {
-                Some(field_config) => field_config.field_type.as_str(),
+                Some(field_config) => field_config.sql_type.as_str(),
                 None => "TEXT",
             };
             let null = match field_config {
@@ -97,7 +97,7 @@ impl TableSchema {
             if !primary_key.contains(name) {
                 let field_config = field_configs.get(name.as_str());
                 let type_str = match field_config {
-                    Some(field_config) => field_config.field_type.as_str(),
+                    Some(field_config) => field_config.sql_type.as_str(),
                     None => "TEXT",
                 };
                 let null = match field_config {
@@ -139,7 +139,7 @@ struct HostInfo {
 
 impl HostInfo {
     fn resolve(host: &Host) -> Result<Self> {
-        let sql_type = SqlType::from_config(&host.field_type).context("host.type")?;
+        let sql_type = SqlType::from_config(&host.sql_type).context("host.type")?;
         Ok(HostInfo {
             name: host.name.clone(),
             sql_type,

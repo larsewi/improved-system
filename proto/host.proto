@@ -9,7 +9,7 @@ message Host {
   string name = 1;
   // Controls how the host value is quoted in generated SQL (e.g. "TEXT", "NUMBER").
   // This is not a database column type.
-  string field_type = 2;
+  string sql_type = 2;
   // The identifier value (e.g. "agent-1").
   string value = 3;
 }

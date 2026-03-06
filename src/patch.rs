@@ -21,7 +21,7 @@ impl From<&HostConfig> for Host {
     fn from(host_config: &HostConfig) -> Self {
         Host {
             name: host_config.name.clone(),
-            field_type: host_config.field_type.clone(),
+            sql_type: host_config.sql_type.clone(),
             value: host_config.value.clone(),
         }
     }

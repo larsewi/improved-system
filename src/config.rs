@@ -38,8 +38,8 @@ impl Default for CompressionConfig {
 #[derive(Debug, Deserialize)]
 pub struct HostConfig {
     pub name: String,
-    #[serde(rename = "type", default = "default_field_type")]
-    pub field_type: String,
+    #[serde(rename = "type", default = "default_sql_type")]
+    pub sql_type: String,
     pub value: String,
 }
 
@@ -57,15 +57,15 @@ pub struct Config {
 #[derive(Debug, Deserialize)]
 pub struct FieldConfig {
     pub name: String,
-    #[serde(rename = "type", default = "default_field_type")]
-    pub field_type: String,
+    #[serde(rename = "type", default = "default_sql_type")]
+    pub sql_type: String,
     #[serde(rename = "primary-key", default)]
     pub primary_key: bool,
     #[serde(default)]
     pub null: Option<String>,
 }
 
-fn default_field_type() -> String {
+fn default_sql_type() -> String {
     "TEXT".to_string()
 }
 
@@ -147,7 +147,7 @@ impl Config {
         }
 
         if let Some(ref host) = config.host {
-            crate::sql::SqlType::from_config(&host.field_type).context("host.type")?;
+            crate::sql::SqlType::from_config(&host.sql_type).context("host.type")?;
         }
 
         if let Some(ref truncate) = config.truncate {
