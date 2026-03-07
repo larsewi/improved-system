@@ -32,6 +32,13 @@ a hash map keyed by composite primary key, then computes a delta against the
 previous snapshot. Each delta records three operation types: inserts (new keys),
 deletes (removed keys), and updates (changed values).
 
+When starting a fresh chain (HEAD is genesis), the block is stored with an empty
+payload — delta computation and STATE file loading are skipped entirely. The
+first block's deltas would never be used: a genesis reference always produces a
+full state patch from the STATE file, and non-genesis references exclude the
+first block from consolidation. This also avoids reading any stale STATE file
+left over from a previous run.
+
 Before computing deltas, the library detects field layout changes by comparing
 each table's stored fields in the STATE file against the current config's
 `ordered_field_names()`. Tables whose layout changed are recorded in the block
@@ -156,8 +163,8 @@ even when the block chain or metadata is incomplete.
 * **REPORTED file deleted:** CLI/FFI falls back to genesis → `Patch::create`
   produces full state
 * **HEAD file deleted:** `head::load` returns genesis → empty patch. Next
-  `Block::create` ignores the stale STATE file and captures all CSV rows as
-  inserts
+  `Block::create` stores a block with an empty payload (stale STATE file is
+  ignored), and the STATE file is overwritten with the current snapshot
 * **Block chain broken:** (middle block deleted) | Delta consolidation fails →
   falls back to full state
 * **STATE file deleted:** (chain intact) | Delta consolidation still succeeds
@@ -253,6 +260,8 @@ Table::load()          Parse CSV into HashMap<primary_key, subsidiary_values>
     |
     v
 State::compute()       Collect all tables into a State
+    |
+    +---> [if genesis: empty payload, skip to Block]
     |
     +---> detect_layout_changes(prev_state, config)
     |         |
