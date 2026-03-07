@@ -6,6 +6,13 @@ See [README.md](README.md) for build dependencies and basic build commands.
 
 To run a single test: `cargo test <test_name>` (e.g. `cargo test test_merge_rule5`).
 
+## Terminology
+
+- **Agent** — an application that creates blocks and produces patches. Agents run
+  on the data-source side, reading CSV files and building the block chain.
+- **Hub** — an application that converts patches to SQL and applies them to the
+  target database.
+
 ## Core architecture
 
 leech2 is a Rust `cdylib` that exposes a C-compatible API for tracking changes
