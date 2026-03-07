@@ -8,6 +8,7 @@ use leech2::utils::GENESIS_HASH;
 
 #[test]
 fn test_state_payload_when_smaller_than_deltas() {
+    common::init_logging();
     let tmp = tempfile::tempdir().unwrap();
     let work_dir = tmp.path();
 
@@ -66,6 +67,7 @@ fields = [
 /// change (delta is smaller), the patch should contain both deltas and states.
 #[test]
 fn test_mixed_payload_deltas_and_states() {
+    common::init_logging();
     let tmp = tempfile::tempdir().unwrap();
     let work_dir = tmp.path();
 

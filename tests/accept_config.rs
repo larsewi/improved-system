@@ -8,6 +8,7 @@ use leech2::utils::GENESIS_HASH;
 
 #[test]
 fn test_missing_config_file() {
+    common::init_logging();
     let tmp = tempfile::tempdir().unwrap();
     let result = Config::load(tmp.path());
     assert!(result.is_err());
@@ -22,6 +23,7 @@ fn test_missing_config_file() {
 
 #[test]
 fn test_config_no_primary_key() {
+    common::init_logging();
     let tmp = tempfile::tempdir().unwrap();
     common::write_config(
         tmp.path(),
@@ -45,6 +47,7 @@ fields = [
 
 #[test]
 fn test_config_duplicate_field_names() {
+    common::init_logging();
     let tmp = tempfile::tempdir().unwrap();
     common::write_config(
         tmp.path(),
@@ -71,6 +74,7 @@ fields = [
 
 #[test]
 fn test_config_invalid_toml_syntax() {
+    common::init_logging();
     let tmp = tempfile::tempdir().unwrap();
     common::write_config(tmp.path(), "config.toml", "this is not valid toml [[[");
     let result = Config::load(tmp.path());
@@ -86,6 +90,7 @@ fn test_config_invalid_toml_syntax() {
 
 #[test]
 fn test_config_invalid_json_syntax() {
+    common::init_logging();
     let tmp = tempfile::tempdir().unwrap();
     common::write_config(tmp.path(), "config.json", "{not valid json}");
     let result = Config::load(tmp.path());
@@ -101,6 +106,7 @@ fn test_config_invalid_json_syntax() {
 
 #[test]
 fn test_truncate_config_max_blocks_invalid() {
+    common::init_logging();
     let tmp = tempfile::tempdir().unwrap();
     common::write_config(
         tmp.path(),
@@ -128,6 +134,7 @@ fields = [
 
 #[test]
 fn test_truncate_config_max_age_invalid() {
+    common::init_logging();
     let tmp = tempfile::tempdir().unwrap();
     common::write_config(
         tmp.path(),
@@ -155,6 +162,7 @@ fields = [
 
 #[test]
 fn test_truncate_config_no_truncate_section() {
+    common::init_logging();
     let tmp = tempfile::tempdir().unwrap();
     common::write_config(
         tmp.path(),
@@ -175,6 +183,7 @@ fields = [
 
 #[test]
 fn test_json_config_file() {
+    common::init_logging();
     let tmp = tempfile::tempdir().unwrap();
     let work_dir = tmp.path();
 

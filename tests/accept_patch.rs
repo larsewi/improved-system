@@ -8,6 +8,7 @@ use leech2::utils::GENESIS_HASH;
 
 #[test]
 fn test_two_blocks_insert_delete_update() {
+    common::init_logging();
     let tmp = tempfile::tempdir().unwrap();
     let work_dir = tmp.path();
 
@@ -69,6 +70,7 @@ fields = [
 
 #[test]
 fn test_three_blocks_chain_consolidation() {
+    common::init_logging();
     let tmp = tempfile::tempdir().unwrap();
     let work_dir = tmp.path();
 

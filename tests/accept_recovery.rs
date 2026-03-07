@@ -31,6 +31,7 @@ fields = [
 /// of failing or producing unsafe delta INSERTs.
 #[test]
 fn test_reported_block_truncated() {
+    common::init_logging();
     let tmp = tempfile::tempdir().unwrap();
     let work_dir = tmp.path();
     let config = setup_users(work_dir);
@@ -67,6 +68,7 @@ fn test_reported_block_truncated() {
 /// may already contain rows).
 #[test]
 fn test_reported_file_deleted() {
+    common::init_logging();
     let tmp = tempfile::tempdir().unwrap();
     let work_dir = tmp.path();
     let config = setup_users(work_dir);
@@ -96,6 +98,7 @@ fn test_reported_file_deleted() {
 /// ignore the stale STATE file and capture all rows as inserts.
 #[test]
 fn test_head_file_deleted() {
+    common::init_logging();
     let tmp = tempfile::tempdir().unwrap();
     let work_dir = tmp.path();
     let config = setup_users(work_dir);
@@ -128,6 +131,7 @@ fn test_head_file_deleted() {
 /// Patch creation should fall back to STATE (TRUNCATE + INSERT).
 #[test]
 fn test_block_chain_broken() {
+    common::init_logging();
     let tmp = tempfile::tempdir().unwrap();
     let work_dir = tmp.path();
     let config = setup_users(work_dir);
@@ -164,6 +168,7 @@ fn test_block_chain_broken() {
 /// for the fallback path).
 #[test]
 fn test_state_file_deleted_with_valid_chain() {
+    common::init_logging();
     let tmp = tempfile::tempdir().unwrap();
     let work_dir = tmp.path();
     let config = setup_users(work_dir);

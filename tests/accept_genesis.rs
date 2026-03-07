@@ -9,6 +9,7 @@ use leech2::utils::GENESIS_HASH;
 
 #[test]
 fn test_empty_patch_before_any_blocks() {
+    common::init_logging();
     let tmp = tempfile::tempdir().unwrap();
     let work_dir = tmp.path();
 
@@ -38,6 +39,7 @@ fields = [
 
 #[test]
 fn test_genesis_block_creation() {
+    common::init_logging();
     let tmp = tempfile::tempdir().unwrap();
     let work_dir = tmp.path();
 
@@ -64,6 +66,7 @@ fields = [
 
 #[test]
 fn test_genesis_patch_all_inserts() {
+    common::init_logging();
     let tmp = tempfile::tempdir().unwrap();
     let work_dir = tmp.path();
 
@@ -109,6 +112,7 @@ fields = [
 
 #[test]
 fn test_noop_patch_when_at_head() {
+    common::init_logging();
     let tmp = tempfile::tempdir().unwrap();
     let work_dir = tmp.path();
 

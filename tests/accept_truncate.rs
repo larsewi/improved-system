@@ -9,6 +9,7 @@ use leech2::utils::GENESIS_HASH;
 
 #[test]
 fn test_truncate_max_blocks() {
+    common::init_logging();
     let tmp = tempfile::tempdir().unwrap();
     let work_dir = tmp.path();
 
@@ -70,6 +71,7 @@ fields = [
 /// then also verify that blocks created within the age window are preserved.
 #[test]
 fn test_truncate_max_age() {
+    common::init_logging();
     let tmp = tempfile::tempdir().unwrap();
     let work_dir = tmp.path();
 
@@ -119,6 +121,7 @@ fields = [
 
 #[test]
 fn test_orphaned_blocks_removed() {
+    common::init_logging();
     let tmp = tempfile::tempdir().unwrap();
     let work_dir = tmp.path();
 
@@ -189,6 +192,7 @@ fields = [
 
 #[test]
 fn test_truncate_reported() {
+    common::init_logging();
     let tmp = tempfile::tempdir().unwrap();
     let work_dir = tmp.path();
 

@@ -8,6 +8,7 @@ use leech2::utils::GENESIS_HASH;
 
 #[test]
 fn test_csv_with_header_row() {
+    common::init_logging();
     let tmp = tempfile::tempdir().unwrap();
     let work_dir = tmp.path();
 
@@ -47,6 +48,7 @@ fields = [
 
 #[test]
 fn test_empty_csv_table() {
+    common::init_logging();
     let tmp = tempfile::tempdir().unwrap();
     let work_dir = tmp.path();
 
@@ -93,6 +95,7 @@ fields = [
 
 #[test]
 fn test_field_type_sql_quoting() {
+    common::init_logging();
     let tmp = tempfile::tempdir().unwrap();
     let work_dir = tmp.path();
 
@@ -159,6 +162,7 @@ fields = [
 
 #[test]
 fn test_null_sentinel() {
+    common::init_logging();
     let tmp = tempfile::tempdir().unwrap();
     let work_dir = tmp.path();
 
@@ -207,6 +211,7 @@ fields = [
 
 #[test]
 fn test_null_on_primary_key_rejected() {
+    common::init_logging();
     let tmp = tempfile::tempdir().unwrap();
 
     common::write_config(

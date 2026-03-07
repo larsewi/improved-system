@@ -8,6 +8,14 @@ use leech2::patch::Patch;
 use leech2::sql;
 use leech2::wire;
 
+/// Initialize logging for tests. Reads the `LEECH2_LOG` env var (same as the
+/// CLI). Safe to call multiple times — subsequent calls are no-ops.
+pub fn init_logging() {
+    let _ = env_logger::Builder::from_env(env_logger::Env::new().filter("LEECH2_LOG"))
+        .is_test(true)
+        .try_init();
+}
+
 /// Write a config file to the work directory.
 pub fn write_config(work_dir: &Path, filename: &str, content: &str) {
     std::fs::write(work_dir.join(filename), content).unwrap();
