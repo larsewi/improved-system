@@ -7,7 +7,8 @@ import "injected.proto";
 import "table.proto";
 import "google/protobuf/timestamp.proto";
 
-// Patch represents the merged diff between two blocks in the chain.
+// Patch represents the result of merging one or more blocks in the chain.
+// It can contain consolidated deltas and/or full state snapshots per table.
 message Patch {
   // The hash of the most recent block in the chain (HEAD).
   string head = 1;
