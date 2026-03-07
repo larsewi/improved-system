@@ -18,6 +18,14 @@ use crate::utils;
 
 pub use crate::proto::block::Block;
 
+impl From<delta::Delta> for TableChange {
+    fn from(delta: delta::Delta) -> Self {
+        TableChange {
+            delta: Some(crate::proto::delta::Delta::from(delta)),
+        }
+    }
+}
+
 impl fmt::Display for Block {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Block:")?;
@@ -96,17 +104,10 @@ impl Block {
                 .unwrap_or_default();
 
             let deltas = delta::Delta::compute(previous_state, &current_state);
-            let mut payload = deltas
+            let mut payload: HashMap<_, _> = deltas
                 .into_iter()
-                .map(|(name, delta)| {
-                    (
-                        name,
-                        TableChange {
-                            delta: Some(crate::proto::delta::Delta::from(delta)),
-                        },
-                    )
-                })
-                .collect::<HashMap<_, _>>();
+                .map(|(name, delta)| (name, TableChange::from(delta)))
+                .collect();
 
             // Mark layout-changed tables: replace their delta with None so that
             // patch consolidation uses full state instead of attempting to merge.
