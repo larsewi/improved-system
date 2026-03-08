@@ -229,8 +229,9 @@ fields = [
 
     let result = Config::load(tmp.path());
     assert!(result.is_err());
+    let error = format!("{:#}", result.unwrap_err());
     assert!(
-        result.unwrap_err().to_string().contains("null sentinel"),
+        error.contains("null sentinel"),
         "should reject null on primary key"
     );
 }

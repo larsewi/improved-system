@@ -79,28 +79,20 @@ pub struct TableConfig {
 }
 
 impl TableConfig {
-    fn validate(&self, name: &str) -> Result<()> {
+    fn validate(&self) -> Result<()> {
         let num_primary_keys = self.fields.iter().filter(|field| field.primary_key).count();
         if num_primary_keys == 0 {
-            bail!(
-                "table '{}': at least one field must be marked as primary-key",
-                name
-            );
+            bail!("at least one field must be marked as primary-key");
         }
 
         let mut seen = HashSet::new();
         for field in &self.fields {
             if !seen.insert(&field.name) {
-                bail!(
-                    "table '{}': found duplicate field name '{}'",
-                    name,
-                    field.name
-                );
+                bail!("found duplicate field name '{}'", field.name);
             }
             if field.primary_key && field.null.is_some() {
                 bail!(
-                    "table '{}': primary-key field '{}' must not have a null sentinel",
-                    name,
+                    "primary-key field '{}' must not have a null sentinel",
                     field.name
                 );
             }
@@ -188,7 +180,9 @@ impl Config {
         config.work_dir = work_dir.to_path_buf();
 
         for (name, table) in &config.tables {
-            table.validate(name)?;
+            table
+                .validate()
+                .with_context(|| format!("table '{}'", name))?;
         }
 
         let mut injected_names = HashSet::new();

@@ -39,8 +39,9 @@ fields = [
     );
     let result = Config::load(tmp.path());
     assert!(result.is_err());
+    let error = format!("{:#}", result.unwrap_err());
     assert!(
-        result.unwrap_err().to_string().contains("primary-key"),
+        error.contains("primary-key"),
         "should report missing primary key"
     );
 }
@@ -63,11 +64,9 @@ fields = [
     );
     let result = Config::load(tmp.path());
     assert!(result.is_err());
+    let error = format!("{:#}", result.unwrap_err());
     assert!(
-        result
-            .unwrap_err()
-            .to_string()
-            .contains("duplicate field name"),
+        error.contains("duplicate field name"),
         "should report duplicate field"
     );
 }
