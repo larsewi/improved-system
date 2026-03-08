@@ -310,7 +310,7 @@ impl Delta {
                 continue;
             }
 
-            let (inserts, deletes, updates) = Self::compute_table(previous_table, current_table);
+            let (inserts, deletes, updates) = Self::diff_table(previous_table, current_table);
 
             // Skip tables with no changes
             if inserts.is_empty() && deletes.is_empty() && updates.is_empty() {
@@ -356,7 +356,7 @@ impl Delta {
         deltas
     }
 
-    fn compute_table(
+    fn diff_table(
         previous_table: Option<&Table>,
         current_table: &Table,
     ) -> (RecordMap, RecordMap, UpdateMap) {
