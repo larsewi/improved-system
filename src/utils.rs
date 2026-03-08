@@ -19,3 +19,39 @@ pub fn format_timestamp(timestamp: &prost_types::Timestamp) -> String {
         datetime.format("%Y-%m-%d %H:%M:%S UTC").to_string()
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_compute_hash() {
+        let hash = compute_hash(b"hello");
+        assert_eq!(hash, "aaf4c61ddcc5e8a2dabede0f3b482cd9aea9434d");
+    }
+
+    #[test]
+    fn test_indent() {
+        assert_eq!(indent("a\nb\nc", "  "), "a\n  b\n  c");
+    }
+
+    #[test]
+    fn test_indent_single_line() {
+        assert_eq!(indent("hello", "  "), "hello");
+    }
+
+    #[test]
+    fn test_format_timestamp() {
+        let timestamp = prost_types::Timestamp {
+            seconds: 1700000000,
+            nanos: 0,
+        };
+        assert_eq!(format_timestamp(&timestamp), "2023-11-14 22:13:20 UTC");
+    }
+
+    #[test]
+    fn test_genesis_hash() {
+        assert_eq!(GENESIS_HASH.len(), 40);
+        assert!(GENESIS_HASH.chars().all(|c| c == '0'));
+    }
+}
