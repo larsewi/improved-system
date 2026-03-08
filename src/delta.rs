@@ -28,9 +28,7 @@ impl TryFrom<crate::proto::delta::Delta> for Delta {
     type Error = anyhow::Error;
 
     fn try_from(proto: crate::proto::delta::Delta) -> Result<Self> {
-        let num_subsidiary = proto
-            .num_subsidiary()
-            .map_err(|e| anyhow::anyhow!("corrupt delta: {}", e))?;
+        let num_subsidiary = proto.num_subsidiary().context("corrupt delta")?;
 
         let inserts = proto
             .inserts
@@ -123,7 +121,7 @@ impl crate::proto::delta::Delta {
     /// determines the PK count from the first available entry's key length
     /// (trying inserts, then deletes, then updates; defaulting to 0 if the
     /// delta is empty) and subtracts it from the total column count.
-    fn num_subsidiary(&self) -> Result<usize, String> {
+    fn num_subsidiary(&self) -> Result<usize> {
         let num_primary_keys = if let Some(entry) = self.inserts.first() {
             entry.key.len()
         } else if let Some(entry) = self.deletes.first() {
@@ -134,11 +132,11 @@ impl crate::proto::delta::Delta {
             0
         };
         if self.column_names.len() < num_primary_keys {
-            return Err(format!(
+            bail!(
                 "column_names has {} entries but primary key has {}",
                 self.column_names.len(),
                 num_primary_keys
-            ));
+            );
         }
         Ok(self.column_names.len() - num_primary_keys)
     }
