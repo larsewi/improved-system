@@ -79,6 +79,36 @@ pub struct TableConfig {
 }
 
 impl TableConfig {
+    fn validate(&self, name: &str) -> Result<()> {
+        let num_primary_keys = self.fields.iter().filter(|field| field.primary_key).count();
+        if num_primary_keys == 0 {
+            bail!(
+                "table '{}': at least one field must be marked as primary-key",
+                name
+            );
+        }
+
+        let mut seen = HashSet::new();
+        for field in &self.fields {
+            if !seen.insert(&field.name) {
+                bail!(
+                    "table '{}': found duplicate field name '{}'",
+                    name,
+                    field.name
+                );
+            }
+            if field.primary_key && field.null.is_some() {
+                bail!(
+                    "table '{}': primary-key field '{}' must not have a null sentinel",
+                    name,
+                    field.name
+                );
+            }
+        }
+
+        Ok(())
+    }
+
     pub fn field_names(&self) -> Vec<String> {
         self.fields.iter().map(|field| field.name.clone()).collect()
     }
@@ -158,35 +188,7 @@ impl Config {
         config.work_dir = work_dir.to_path_buf();
 
         for (name, table) in &config.tables {
-            let num_primary_keys = table
-                .fields
-                .iter()
-                .filter(|field| field.primary_key)
-                .count();
-            if num_primary_keys == 0 {
-                bail!(
-                    "table '{}': at least one field must be marked as primary-key",
-                    name
-                );
-            }
-
-            let mut seen = HashSet::new();
-            for field in &table.fields {
-                if !seen.insert(&field.name) {
-                    bail!(
-                        "table '{}': found duplicate field name '{}'",
-                        name,
-                        field.name
-                    );
-                }
-                if field.primary_key && field.null.is_some() {
-                    bail!(
-                        "table '{}': primary-key field '{}' must not have a null sentinel",
-                        name,
-                        field.name
-                    );
-                }
-            }
+            table.validate(name)?;
         }
 
         let mut injected_names = HashSet::new();
