@@ -43,6 +43,13 @@ pub struct InjectedFieldConfig {
     pub value: String,
 }
 
+impl InjectedFieldConfig {
+    fn validate(&self) -> Result<()> {
+        crate::sql::SqlType::from_config(&self.sql_type).context("invalid type")?;
+        Ok(())
+    }
+}
+
 #[derive(Debug, Deserialize)]
 pub struct Config {
     #[serde(skip)]
@@ -194,8 +201,9 @@ impl Config {
                     field.name
                 );
             }
-            crate::sql::SqlType::from_config(&field.sql_type)
-                .with_context(|| format!("injected-fields[{}].type", index))?;
+            field
+                .validate()
+                .with_context(|| format!("injected-fields[{}]", index))?;
         }
 
         if let Some(ref truncate) = config.truncate {
