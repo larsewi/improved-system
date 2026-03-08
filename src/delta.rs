@@ -63,8 +63,8 @@ impl From<Delta> for crate::proto::delta::Delta {
 /// Format a single column value for update display.
 ///
 /// When `old` is provided and differs from `new`, shows `"old -> new"`.
-/// When `old` equals `new`, shows `"_"` (unchanged). When there is no
-/// old value, shows just `new`.
+/// When `old` equals `new`, shows `"_"` (unchanged).
+/// When there is no old value, shows just `new`.
 fn format_update_column(new: &str, old: Option<&str>) -> String {
     match old {
         Some(old) if old != new => format!("{} -> {}", old, new),
