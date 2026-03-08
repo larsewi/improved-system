@@ -124,3 +124,104 @@ impl fmt::Display for Update {
         )
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_update(
+        key: &[&str],
+        changed_indices: &[u32],
+        old_value: &[&str],
+        new_value: &[&str],
+    ) -> Update {
+        Update {
+            key: key.iter().map(|s| s.to_string()).collect(),
+            changed_indices: changed_indices.to_vec(),
+            old_value: old_value.iter().map(|s| s.to_string()).collect(),
+            new_value: new_value.iter().map(|s| s.to_string()).collect(),
+        }
+    }
+
+    #[test]
+    fn test_expand_sparse() {
+        let mut update = make_update(&["k"], &[0, 2], &["a", "b"], &["x", "y"]);
+        update.expand_sparse(3);
+        assert_eq!(update.old_value, vec!["a", "", "b"]);
+        assert_eq!(update.new_value, vec!["x", "", "y"]);
+        assert!(update.changed_indices.is_empty());
+    }
+
+    #[test]
+    fn test_expand_sparse_no_changed_indices() {
+        let mut update = make_update(&["k"], &[], &["a", "b"], &["x", "y"]);
+        update.expand_sparse(2);
+        assert_eq!(update.old_value, vec!["a", "b"]);
+        assert_eq!(update.new_value, vec!["x", "y"]);
+    }
+
+    #[test]
+    fn test_sparse_encode() {
+        let mut update = make_update(&["k"], &[], &["a", "b", "c"], &["a", "x", "c"]);
+        update.sparse_encode();
+        assert_eq!(update.changed_indices, vec![1]);
+        assert!(update.old_value.is_empty());
+        assert_eq!(update.new_value, vec!["x"]);
+    }
+
+    #[test]
+    fn test_sparse_encode_all_changed() {
+        let mut update = make_update(&["k"], &[], &["a", "b"], &["x", "y"]);
+        update.sparse_encode();
+        assert_eq!(update.changed_indices, vec![0, 1]);
+        assert_eq!(update.new_value, vec!["x", "y"]);
+    }
+
+    #[test]
+    fn test_format_full_columns_with_old() {
+        let update = make_update(&["k"], &[], &["a", "b", "c"], &["a", "x", "c"]);
+        let columns = update.format_columns(3);
+        assert_eq!(columns, vec!["_", "b -> x", "_"]);
+    }
+
+    #[test]
+    fn test_format_full_columns_without_old() {
+        let update = make_update(&["k"], &[], &[], &["a", "x", "c"]);
+        let columns = update.format_columns(3);
+        assert_eq!(columns, vec!["a", "x", "c"]);
+    }
+
+    #[test]
+    fn test_format_sparse_columns_with_old() {
+        let update = make_update(&["k"], &[1], &["b"], &["x"]);
+        let columns = update.format_columns(3);
+        assert_eq!(columns, vec!["_", "b -> x", "_"]);
+    }
+
+    #[test]
+    fn test_format_sparse_columns_without_old() {
+        let update = make_update(&["k"], &[1], &[], &["x"]);
+        let columns = update.format_columns(3);
+        assert_eq!(columns, vec!["_", "x", "_"]);
+    }
+
+    #[test]
+    fn test_from_tuple() {
+        let update: Update = (
+            vec!["k".to_string()],
+            (vec!["a".to_string()], vec!["b".to_string()]),
+        )
+            .into();
+        assert_eq!(update.key, vec!["k"]);
+        assert_eq!(update.old_value, vec!["a"]);
+        assert_eq!(update.new_value, vec!["b"]);
+        assert!(update.changed_indices.is_empty());
+    }
+
+    #[test]
+    fn test_display() {
+        let update = make_update(&["k"], &[1], &["a"], &["b"]);
+        let display = format!("{}", update);
+        assert_eq!(display, r#"["k"] [cols [1]]: ["a"] -> ["b"]"#);
+    }
+}
