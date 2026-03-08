@@ -6,7 +6,6 @@ use std::path::Path;
 use anyhow::{Context, Result};
 
 use crate::config::TableConfig;
-use crate::entry::Entry;
 
 /// A table with records stored in a hash map for efficient lookup.
 /// Fields are ordered with primary key columns first, followed by subsidiary columns.
@@ -20,11 +19,7 @@ pub struct Table {
 
 impl From<crate::proto::table::Table> for Table {
     fn from(proto: crate::proto::table::Table) -> Self {
-        let records = proto
-            .entries
-            .into_iter()
-            .map(|entry| (entry.key, entry.value))
-            .collect();
+        let records = proto.entries.into_iter().map(Into::into).collect();
         Table {
             fields: proto.fields,
             records,
@@ -34,11 +29,7 @@ impl From<crate::proto::table::Table> for Table {
 
 impl From<Table> for crate::proto::table::Table {
     fn from(table: Table) -> Self {
-        let entries = table
-            .records
-            .into_iter()
-            .map(|(key, value)| Entry { key, value })
-            .collect();
+        let entries = table.records.into_iter().map(Into::into).collect();
         crate::proto::table::Table {
             fields: table.fields,
             entries,

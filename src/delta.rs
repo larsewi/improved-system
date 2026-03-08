@@ -3,7 +3,6 @@ use std::fmt;
 
 use anyhow::{Context, Result, bail};
 
-use crate::entry::Entry;
 use crate::state::State;
 use crate::table::Table;
 use crate::update::Update;
@@ -30,16 +29,8 @@ impl TryFrom<crate::proto::delta::Delta> for Delta {
     fn try_from(proto: crate::proto::delta::Delta) -> Result<Self> {
         let num_subsidiary = proto.num_subsidiary().context("corrupt delta")?;
 
-        let inserts = proto
-            .inserts
-            .into_iter()
-            .map(|entry| (entry.key, entry.value))
-            .collect();
-        let deletes = proto
-            .deletes
-            .into_iter()
-            .map(|entry| (entry.key, entry.value))
-            .collect();
+        let inserts = proto.inserts.into_iter().map(Into::into).collect();
+        let deletes = proto.deletes.into_iter().map(Into::into).collect();
         // Updates are stored sparsely on the wire: only changed column
         // indices and their values are included. Expand them back to
         // full-width value vectors (one element per subsidiary column).
@@ -62,16 +53,8 @@ impl TryFrom<crate::proto::delta::Delta> for Delta {
 
 impl From<Delta> for crate::proto::delta::Delta {
     fn from(delta: Delta) -> Self {
-        let inserts = delta
-            .inserts
-            .into_iter()
-            .map(|(key, value)| Entry { key, value })
-            .collect();
-        let deletes = delta
-            .deletes
-            .into_iter()
-            .map(|(key, value)| Entry { key, value })
-            .collect();
+        let inserts = delta.inserts.into_iter().map(Into::into).collect();
+        let deletes = delta.deletes.into_iter().map(Into::into).collect();
         let updates = delta
             .updates
             .into_iter()
