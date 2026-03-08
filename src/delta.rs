@@ -42,6 +42,9 @@ impl TryFrom<crate::proto::delta::Delta> for Delta {
             .into_iter()
             .map(|entry| (entry.key, entry.value))
             .collect();
+        // Updates are stored sparsely on the wire: only changed column
+        // indices and their values are included. Expand them back to
+        // full-width value vectors (one element per subsidiary column).
         let updates = proto
             .updates
             .into_iter()
