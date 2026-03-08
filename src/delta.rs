@@ -89,31 +89,35 @@ impl crate::proto::delta::Delta {
     }
 
     fn fmt_inserts(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if !self.inserts.is_empty() {
-            write!(f, "\n  Inserts ({}):", self.inserts.len())?;
-            for entry in &self.inserts {
-                write!(
-                    f,
-                    "\n    ({}) {}",
-                    entry.key.join(", "),
-                    entry.value.join(", ")
-                )?;
-            }
+        if self.inserts.is_empty() {
+            return Ok(());
+        }
+
+        write!(f, "\n  Inserts ({}):", self.inserts.len())?;
+        for entry in &self.inserts {
+            write!(
+                f,
+                "\n    ({}) {}",
+                entry.key.join(", "),
+                entry.value.join(", ")
+            )?;
         }
         Ok(())
     }
 
     fn fmt_deletes(&self, f: &mut fmt::Formatter<'_>, num_subsidiary: usize) -> fmt::Result {
-        if !self.deletes.is_empty() {
-            write!(f, "\n  Deletes ({}):", self.deletes.len())?;
-            for entry in &self.deletes {
-                let values = if entry.value.is_empty() {
-                    vec!["_"; num_subsidiary].join(", ")
-                } else {
-                    entry.value.join(", ")
-                };
-                write!(f, "\n    ({}) {}", entry.key.join(", "), values)?;
-            }
+        if self.deletes.is_empty() {
+            return Ok(());
+        }
+
+        write!(f, "\n  Deletes ({}):", self.deletes.len())?;
+        for entry in &self.deletes {
+            let values = if entry.value.is_empty() {
+                vec!["_"; num_subsidiary].join(", ")
+            } else {
+                entry.value.join(", ")
+            };
+            write!(f, "\n    ({}) {}", entry.key.join(", "), values)?;
         }
         Ok(())
     }
