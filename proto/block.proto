@@ -10,6 +10,7 @@ import "google/protobuf/timestamp.proto";
 // bytes can be decoded as a BlockHeader.
 message BlockHeader {
   string parent = 1;
+  google.protobuf.Timestamp created = 2;
 }
 
 // Block represents a committed set of changes, forming a chain via parent references.

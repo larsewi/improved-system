@@ -59,18 +59,26 @@ impl Block {
         Ok(block)
     }
 
-    /// Load only the parent hash from a block without reading or decoding the
-    /// full payload. Reads just enough bytes for the protobuf-encoded `parent`
-    /// field (1 byte tag + 1 byte length + 40 byte hash = 42 bytes) and decodes
-    /// them via [`BlockHeader`].
-    pub fn load_parent_hash(work_dir: &Path, hash: &str) -> Result<String> {
-        const PARENT_FIELD_SIZE: usize = 42;
-        let data = storage::load_prefix(work_dir, hash, PARENT_FIELD_SIZE)?
+    /// Load the block header (parent hash + created timestamp) without reading
+    /// or decoding the full payload. Reads a small prefix of the file and
+    /// decodes it via [`BlockHeader`].
+    pub fn load_header(work_dir: &Path, hash: &str) -> Result<BlockHeader> {
+        // Field 1 (parent): 1 tag + 1 length + 40 hash = 42 bytes.
+        // Field 2 (created): 1 tag + 1 length + up to 12 Timestamp = 14 bytes.
+        // Total: 56 bytes covers both fields with room to spare.
+        const HEADER_SIZE: usize = 56;
+        let data = storage::load_prefix(work_dir, hash, HEADER_SIZE)?
             .with_context(|| format!("failed to load block '{:.7}...'", hash))?;
         let header = BlockHeader::decode(data.as_slice())
             .with_context(|| format!("failed to decode header from block '{:.7}...'", hash))?;
-        log::info!("Loaded parent hash from block '{:.7}...'", hash);
-        Ok(header.parent)
+        log::info!("Loaded header from block '{:.7}...'", hash);
+        Ok(header)
+    }
+
+    /// Load only the parent hash from a block without reading or decoding the
+    /// full payload.
+    pub fn load_parent_hash(work_dir: &Path, hash: &str) -> Result<String> {
+        Ok(Self::load_header(work_dir, hash)?.parent)
     }
 
     pub fn create(config: &Config) -> Result<String> {
