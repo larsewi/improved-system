@@ -25,6 +25,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Prefer `From`/`Into` (or `TryFrom`/`TryInto` for fallible conversions) over manual construction when converting between types, especially domain-to-proto conversions.
 - After implementing new features, look for opportunities to refactor the code to improve readability and reduce duplication.
 - Commit often, but ensure each commit leaves leech2 in a working state (builds, tests pass, clippy clean).
+- Every commit message must include a `Ticket: ENT-13798` line and a `Signed-off-by` line. Example:
+  ```
+  Short summary of the change
+
+  Ticket: ENT-13798
+  Signed-off-by: Lars Erik Wik <lars.erik.wik@northern.tech>
+  ```
 
 ## Architecture
 
