@@ -9,7 +9,7 @@ use prost::Message;
 use crate::config::Config;
 use crate::delta;
 use crate::head;
-use crate::proto::block::TableChange;
+use crate::proto::block::{BlockHeader, TableChange};
 use crate::state;
 use crate::storage;
 use crate::truncate;
@@ -57,6 +57,28 @@ impl Block {
             .with_context(|| format!("failed to decode block '{:.7}...'", hash))?;
         log::info!("Loaded block '{:.7}...'", hash);
         Ok(block)
+    }
+
+    /// Load the block header (parent hash + created timestamp) without reading
+    /// or decoding the full payload. Reads a small prefix of the file and
+    /// decodes it via [`BlockHeader`].
+    pub fn load_header(work_dir: &Path, hash: &str) -> Result<BlockHeader> {
+        // Field 1 (parent): 1 tag + 1 length + 40 hash = 42 bytes.
+        // Field 2 (created): 1 tag + 1 length + up to 12 Timestamp = 14 bytes.
+        // Total: 56 bytes covers both fields with room to spare.
+        const HEADER_SIZE: usize = 56;
+        let data = storage::load_prefix(work_dir, hash, HEADER_SIZE)?
+            .with_context(|| format!("failed to load block '{:.7}...'", hash))?;
+        let header = BlockHeader::decode(data.as_slice())
+            .with_context(|| format!("failed to decode header from block '{:.7}...'", hash))?;
+        log::info!("Loaded header from block '{:.7}...'", hash);
+        Ok(header)
+    }
+
+    /// Load only the parent hash from a block without reading or decoding the
+    /// full payload.
+    pub fn load_parent_hash(work_dir: &Path, hash: &str) -> Result<String> {
+        Ok(Self::load_header(work_dir, hash)?.parent)
     }
 
     pub fn create(config: &Config) -> Result<String> {
@@ -137,5 +159,22 @@ mod tests {
         let decoded = Block::decode(buf.as_slice()).unwrap();
         assert_eq!(decoded.created, block.created);
         assert_eq!(decoded.parent, block.parent);
+    }
+
+    #[test]
+    fn test_block_header_decodes_only_parent() {
+        let block = Block {
+            parent: "deadbeef".to_string(),
+            created: Some(prost_types::Timestamp {
+                seconds: 1700000000,
+                nanos: 0,
+            }),
+            payload: HashMap::from([("table".to_string(), TableChange { delta: None })]),
+        };
+        let mut buf = Vec::new();
+        block.encode(&mut buf).unwrap();
+
+        let header = BlockHeader::decode(buf.as_slice()).unwrap();
+        assert_eq!(header.parent, "deadbeef");
     }
 }
