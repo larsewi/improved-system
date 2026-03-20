@@ -241,3 +241,91 @@ fields = [
     assert!(work_dir.join(&hash3).exists());
     assert!(work_dir.join(&hash4).exists());
 }
+
+#[test]
+fn test_disable_remove_orphans() {
+    common::init_logging();
+    let tmp = tempfile::tempdir().unwrap();
+    let work_dir = tmp.path();
+
+    common::write_config(
+        work_dir,
+        "config.toml",
+        r#"
+[truncate]
+remove-orphans = false
+
+[tables.users]
+source = "users.csv"
+fields = [
+    { name = "id", type = "NUMBER", primary-key = true },
+    { name = "name", type = "TEXT" },
+]
+"#,
+    );
+
+    common::write_csv(work_dir, "users.csv", "1,Alice\n");
+    let config = Config::load(work_dir).unwrap();
+    let _hash1 = Block::create(&config).unwrap();
+
+    // Add a fake orphaned block file
+    let orphan_hash = "aa00000000000000000000000000000000000000";
+    std::fs::write(work_dir.join(orphan_hash), b"fake").unwrap();
+
+    // Create another block — orphan should survive because remove-orphans is false
+    common::write_csv(work_dir, "users.csv", "1,Alice\n2,Bob\n");
+    let _hash2 = Block::create(&config).unwrap();
+
+    assert!(
+        work_dir.join(orphan_hash).exists(),
+        "orphaned block should be preserved when remove-orphans = false"
+    );
+}
+
+#[test]
+fn test_disable_truncate_reported() {
+    common::init_logging();
+    let tmp = tempfile::tempdir().unwrap();
+    let work_dir = tmp.path();
+
+    common::write_config(
+        work_dir,
+        "config.toml",
+        r#"
+[truncate]
+truncate-reported = false
+
+[tables.users]
+source = "users.csv"
+fields = [
+    { name = "id", type = "NUMBER", primary-key = true },
+    { name = "name", type = "TEXT" },
+]
+"#,
+    );
+
+    common::write_csv(work_dir, "users.csv", "1,Alice\n");
+    let config = Config::load(work_dir).unwrap();
+    let hash1 = Block::create(&config).unwrap();
+
+    common::write_csv(work_dir, "users.csv", "1,Alice\n2,Bob\n");
+    let hash2 = Block::create(&config).unwrap();
+
+    common::write_csv(work_dir, "users.csv", "1,Alice\n2,Bob\n3,Charlie\n");
+    let hash3 = Block::create(&config).unwrap();
+
+    // Mark B2 as reported
+    reported::save(work_dir, &hash2).unwrap();
+
+    // Create another block — B1 should survive because truncate-reported is false
+    common::write_csv(work_dir, "users.csv", "1,Alice\n2,Bob\n3,Charlie\n4,Dave\n");
+    let hash4 = Block::create(&config).unwrap();
+
+    assert!(
+        work_dir.join(&hash1).exists(),
+        "block before REPORTED should be preserved when truncate-reported = false"
+    );
+    assert!(work_dir.join(&hash2).exists());
+    assert!(work_dir.join(&hash3).exists());
+    assert!(work_dir.join(&hash4).exists());
+}

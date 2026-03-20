@@ -17,6 +17,25 @@ pub struct TruncateConfig {
     pub max_blocks: Option<u32>,
     #[serde(rename = "max-age")]
     pub max_age: Option<String>,
+    #[serde(default = "default_true", rename = "remove-orphans")]
+    pub remove_orphans: bool,
+    #[serde(default = "default_true", rename = "truncate-reported")]
+    pub truncate_reported: bool,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+impl Default for TruncateConfig {
+    fn default() -> Self {
+        Self {
+            max_blocks: None,
+            max_age: None,
+            remove_orphans: true,
+            truncate_reported: true,
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -59,7 +78,8 @@ pub struct Config {
     #[serde(default)]
     pub compression: CompressionConfig,
     pub tables: HashMap<String, TableConfig>,
-    pub truncate: Option<TruncateConfig>,
+    #[serde(default)]
+    pub truncate: TruncateConfig,
 }
 
 #[derive(Debug, Deserialize)]
@@ -212,15 +232,13 @@ impl Config {
 
         // Validate truncation: max-blocks >= 1 and max-age is a valid
         // duration string (e.g. "30s", "12h", "7d").
-        if let Some(ref truncate) = config.truncate {
-            if let Some(max_blocks) = truncate.max_blocks
-                && max_blocks < 1
-            {
-                bail!("truncate.max-blocks must be >= 1");
-            }
-            if let Some(ref max_age) = truncate.max_age {
-                parse_duration(max_age).context("truncate.max-age")?;
-            }
+        if let Some(max_blocks) = config.truncate.max_blocks
+            && max_blocks < 1
+        {
+            bail!("truncate.max-blocks must be >= 1");
+        }
+        if let Some(ref max_age) = config.truncate.max_age {
+            parse_duration(max_age).context("truncate.max-age")?;
         }
 
         log::info!("Initialized config with {} tables", config.tables.len());

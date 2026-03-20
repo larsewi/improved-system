@@ -147,15 +147,19 @@ after every `lch_block_create()` / `lch block create`:
 
 ```toml
 [truncate]
-max-blocks = 100  # keep at most 100 blocks in the chain (>= 1)
-max-age = "7d"    # remove blocks older than this duration
+max-blocks = 100         # keep at most 100 blocks in the chain (>= 1)
+max-age = "7d"           # remove blocks older than this duration
+remove-orphans = true    # remove blocks on disk not reachable from HEAD (default: true)
+truncate-reported = true # remove blocks older than last reported position (default: true)
 ```
 
-Both fields are optional and independent. Supported duration suffixes: `s`
+All fields are optional and independent. Supported duration suffixes: `s`
 (seconds), `m` (minutes), `h` (hours), `d` (days), `w` (weeks).
 
-Truncation always removes orphaned blocks (on disk but not reachable from HEAD)
-and blocks older than the last reported position (see `lch_patch_applied`).
+By default, truncation removes orphaned blocks (on disk but not reachable from
+HEAD) and blocks older than the last reported position (see `lch_patch_applied`).
+Set `remove-orphans = false` or `truncate-reported = false` to disable these
+behaviors.
 
 ## C API
 
