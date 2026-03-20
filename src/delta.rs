@@ -195,10 +195,10 @@ impl Delta {
         } else if let Some(delete_value) = self.deletes.remove(&key) {
             if delete_value == insert_value {
                 // Rule 9a: delete then insert with same value → cancels out
-                log::debug!("Rule 9a: delete + insert cancel out for key {:?}", key);
+                log::trace!("Rule 9a: delete + insert cancel out for key {:?}", key);
             } else {
                 // Rule 9b: delete then insert with different value → update
-                log::debug!("Rule 9b: delete + insert becomes update for key {:?}", key);
+                log::trace!("Rule 9b: delete + insert becomes update for key {:?}", key);
                 self.updates.insert(key, (delete_value, insert_value));
             }
         } else if self.updates.contains_key(&key) {
@@ -209,7 +209,7 @@ impl Delta {
             );
         } else {
             // Rule 1: pass through
-            log::debug!("Rule 1: insert passes through for key {:?}", key);
+            log::trace!("Rule 1: insert passes through for key {:?}", key);
             self.inserts.insert(key, insert_value);
         }
         Ok(())
@@ -218,14 +218,14 @@ impl Delta {
     fn merge_delete(&mut self, key: Vec<String>, delete_value: Vec<String>) -> Result<()> {
         if self.inserts.remove(&key).is_some() {
             // Rule 6: insert then delete → cancels out
-            log::debug!("Rule 6: insert + delete cancel out for key {:?}", key);
+            log::trace!("Rule 6: insert + delete cancel out for key {:?}", key);
         } else if self.deletes.contains_key(&key) {
             // Rule 10: double delete → error
             bail!("rule 10: key {:?} deleted in both blocks", key);
         } else if let Some((old_value, new_value)) = self.updates.remove(&key) {
             if delete_value == new_value {
                 // Rule 14a: update then delete, values match → delete(old)
-                log::debug!("Rule 14a: update + delete becomes delete for key {:?}", key);
+                log::trace!("Rule 14a: update + delete becomes delete for key {:?}", key);
                 self.deletes.insert(key, old_value);
             } else {
                 // Rule 14b: update then delete, values mismatch → error
@@ -238,7 +238,7 @@ impl Delta {
             }
         } else {
             // Rule 2: pass through
-            log::debug!("Rule 2: delete passes through for key {:?}", key);
+            log::trace!("Rule 2: delete passes through for key {:?}", key);
             self.deletes.insert(key, delete_value);
         }
         Ok(())
@@ -252,7 +252,7 @@ impl Delta {
     ) -> Result<()> {
         if let Some(insert_value) = self.inserts.get_mut(&key) {
             // Rule 7: insert then update → insert(new_value)
-            log::debug!("Rule 7: insert + update becomes insert for key {:?}", key);
+            log::trace!("Rule 7: insert + update becomes insert for key {:?}", key);
             *insert_value = new_value;
         } else if self.deletes.contains_key(&key) {
             // Rule 11: update after delete → error
@@ -261,7 +261,7 @@ impl Delta {
             // Rule 15: update then update → update(old1 → new2)
             // Merge sparse-expanded updates: only touch positions that actually
             // changed in the current update.
-            log::debug!("Rule 15: update + update merged for key {:?}", key);
+            log::trace!("Rule 15: update + update merged for key {:?}", key);
             for i in 0..update.0.len() {
                 let parent_changed = update.0[i] != update.1[i];
                 let current_changed = old_value[i] != new_value[i];
@@ -274,7 +274,7 @@ impl Delta {
             }
         } else {
             // Rule 3: pass through
-            log::debug!("Rule 3: update passes through for key {:?}", key);
+            log::trace!("Rule 3: update passes through for key {:?}", key);
             self.updates.insert(key, (old_value, new_value));
         }
         Ok(())
@@ -311,6 +311,14 @@ impl Delta {
             }
 
             let (inserts, deletes, updates) = Self::diff_table(previous_table, current_table);
+
+            log::trace!(
+                "Table '{}': {} inserts, {} deletes, {} updates",
+                table_name,
+                inserts.len(),
+                deletes.len(),
+                updates.len()
+            );
 
             // Skip tables with no changes
             if inserts.is_empty() && deletes.is_empty() && updates.is_empty() {

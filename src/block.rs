@@ -110,7 +110,7 @@ impl Block {
             created,
             payload,
         };
-        log::debug!("{}", block);
+        log::trace!("{}", block);
 
         let mut encoded = Vec::new();
         block

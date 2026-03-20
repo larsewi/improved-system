@@ -46,7 +46,7 @@ pub fn store(work_dir: &Path, name: &str, data: &[u8]) -> Result<()> {
     })?;
 
     // _lock dropped here, releasing exclusive lock.
-    log::debug!("Stored {} bytes to '{}'", data.len(), path.display());
+    log::trace!("Stored {} bytes to '{}'", data.len(), path.display());
     Ok(())
 }
 
@@ -59,7 +59,7 @@ pub fn remove(work_dir: &Path, name: &str) -> Result<()> {
     match fs::remove_file(&path) {
         Ok(()) => {}
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            log::debug!(
+            log::trace!(
                 "File '{}' does not exist, nothing to remove",
                 path.display()
             );
@@ -76,7 +76,7 @@ pub fn remove(work_dir: &Path, name: &str) -> Result<()> {
     drop(_lock);
     let _ = fs::remove_file(&lock_path);
 
-    log::debug!("Removed '{}'", path.display());
+    log::trace!("Removed '{}'", path.display());
     Ok(())
 }
 
@@ -84,7 +84,7 @@ pub fn remove(work_dir: &Path, name: &str) -> Result<()> {
 pub fn load(work_dir: &Path, name: &str) -> Result<Option<Vec<u8>>> {
     let path = work_dir.join(name);
     if !path.exists() {
-        log::debug!("File '{}' does not exist", path.display());
+        log::trace!("File '{}' does not exist", path.display());
         return Ok(None);
     }
 
@@ -97,7 +97,7 @@ pub fn load(work_dir: &Path, name: &str) -> Result<Option<Vec<u8>>> {
         .with_context(|| format!("failed to read from '{}'", path.display()))?;
 
     // _lock dropped here, releasing shared lock.
-    log::debug!("Loaded {} bytes from '{}'", data.len(), path.display());
+    log::trace!("Loaded {} bytes from '{}'", data.len(), path.display());
     Ok(Some(data))
 }
 

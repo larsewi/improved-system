@@ -73,7 +73,7 @@ impl State {
             "Loaded previous state with {} tables",
             proto_state.tables.len()
         );
-        log::debug!("{}", proto_state);
+        log::trace!("{}", proto_state);
         let state = State::from(proto_state);
         Ok(Some(state))
     }
@@ -88,9 +88,7 @@ impl State {
 
         let state = State { tables };
         log::info!("Computed current state from {} tables", state.tables.len());
-        if log::log_enabled!(log::Level::Debug) {
-            log::debug!("{}", crate::proto::state::State::from(state.clone()));
-        }
+        log::trace!("{}", crate::proto::state::State::from(state.clone()));
         Ok(state)
     }
 
