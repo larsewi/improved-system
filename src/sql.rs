@@ -422,6 +422,7 @@ pub fn patch_to_sql(config: &Config, patch: &Patch) -> Result<Option<String>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::TruncateConfig;
 
     #[test]
     fn test_sql_type_from_config() {
@@ -539,7 +540,7 @@ mod tests {
             injected_fields: Vec::new(),
             compression: crate::config::CompressionConfig::default(),
             tables: HashMap::from([("test_table".to_string(), table_config)]),
-            truncate: None,
+            truncate: TruncateConfig::default(),
         };
 
         let patch = Patch {
@@ -588,7 +589,7 @@ mod tests {
             injected_fields: Vec::new(),
             compression: crate::config::CompressionConfig::default(),
             tables: HashMap::from([("test_table".to_string(), table_config)]),
-            truncate: None,
+            truncate: TruncateConfig::default(),
         };
 
         let patch = Patch {
@@ -635,7 +636,7 @@ mod tests {
             injected_fields: Vec::new(),
             compression: crate::config::CompressionConfig::default(),
             tables: HashMap::from([("test_table".to_string(), table_config)]),
-            truncate: None,
+            truncate: TruncateConfig::default(),
         };
 
         let patch = Patch {

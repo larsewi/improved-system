@@ -89,10 +89,12 @@ pub fn run(config: &Config) -> Result<()> {
     // Orphan removal: delete block files on disk not in reachable set,
     // and stale lock files whose block no longer exists
     let (on_disk, stale_locks) = scan_work_dir(work_dir)?;
-    for hash in &on_disk {
-        if !reachable.contains(hash) {
-            log::info!("Removing orphaned block '{:.7}...'", hash);
-            storage::remove(work_dir, hash)?;
+    if config.truncate.remove_orphans {
+        for hash in &on_disk {
+            if !reachable.contains(hash) {
+                log::info!("Removing orphaned block '{:.7}...'", hash);
+                storage::remove(work_dir, hash)?;
+            }
         }
     }
 
@@ -106,19 +108,19 @@ pub fn run(config: &Config) -> Result<()> {
     }
 
     // Precompute rule parameters
-    let reported_pos = match reported::load(work_dir)? {
-        Some(ref hash) => chain
-            .iter()
-            .position(|chain_entry| chain_entry.hash == *hash),
-        None => None,
+    let reported_pos = if config.truncate.truncate_reported {
+        match reported::load(work_dir)? {
+            Some(ref hash) => chain
+                .iter()
+                .position(|chain_entry| chain_entry.hash == *hash),
+            None => None,
+        }
+    } else {
+        None
     };
 
-    let max_blocks = config
-        .truncate
-        .as_ref()
-        .and_then(|t| t.max_blocks)
-        .map(|m| m as usize);
-    let max_age_cutoff = match config.truncate.as_ref().and_then(|t| t.max_age.as_ref()) {
+    let max_blocks = config.truncate.max_blocks.map(|m| m as usize);
+    let max_age_cutoff = match config.truncate.max_age.as_ref() {
         Some(s) => Some(SystemTime::now() - parse_duration(s)?),
         None => None,
     };
