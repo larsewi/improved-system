@@ -66,7 +66,7 @@ pub fn run(config: &Config) -> Result<()> {
             Ok(header) => header,
             Err(_) => {
                 // Block was previously truncated — end of reachable chain
-                log::debug!(
+                log::trace!(
                     "Block '{:.7}...' not found (previously truncated), stopping chain walk",
                     current_hash
                 );

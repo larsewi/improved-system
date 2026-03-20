@@ -163,8 +163,14 @@ fn try_consolidate(work_dir: &Path, head: &str, last_known: &str) -> Result<Cons
     let mut running_deltas: HashMap<String, Delta> = HashMap::new();
     let mut reset_tables: HashSet<String> = HashSet::new();
 
-    for hash in block_hashes {
-        let block = Block::load(work_dir, &hash)?;
+    for (index, hash) in block_hashes.iter().enumerate() {
+        log::trace!(
+            "Merging block {}/{}: '{:.7}...'",
+            index + 1,
+            num_blocks,
+            hash
+        );
+        let block = Block::load(work_dir, hash)?;
         merge_block_deltas(block, &mut running_deltas, &mut reset_tables);
     }
 
@@ -235,7 +241,7 @@ fn full_state_patch(
         states: state.into(),
         field_hashes,
     };
-    log::debug!("Built patch:\n{}", patch);
+    log::trace!("Built patch:\n{}", patch);
     Ok(patch)
 }
 
@@ -265,7 +271,7 @@ impl Patch {
                 states: HashMap::new(),
                 field_hashes,
             };
-            log::debug!("Built patch:\n{}", patch);
+            log::trace!("Built patch:\n{}", patch);
             return Ok(patch);
         }
 
@@ -306,7 +312,7 @@ impl Patch {
             field_hashes,
         };
 
-        log::debug!("Built patch:\n{}", patch);
+        log::trace!("Built patch:\n{}", patch);
         Ok(patch)
     }
 }
