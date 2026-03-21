@@ -187,6 +187,17 @@ lch_patch_free(buf, len);
 lch_deinit(cfg);
 ```
 
+## Logging
+
+**CLI:** Logs are written to stderr. Set the `LEECH2_LOG` environment variable
+to control the log level (e.g. `LEECH2_LOG=debug`).
+
+**FFI:** Call `lch_log_init()` first to receive log messages through a callback.
+See [`include/leech2.h`](include/leech2.h) for the full API. Available levels:
+`LCH_LOG_ERROR` (1), `LCH_LOG_WARN` (2), `LCH_LOG_INFO` (3),
+`LCH_LOG_DEBUG` (4), `LCH_LOG_TRACE` (5). Trace messages are only emitted in
+debug builds; release builds strip them at compile time.
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for architecture details, data flow, and

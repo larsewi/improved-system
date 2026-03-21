@@ -1,4 +1,4 @@
-use std::ffi::{CStr, CString, c_char};
+use std::ffi::{CStr, CString, c_char, c_void};
 use std::path::PathBuf;
 
 pub mod block;
@@ -6,6 +6,7 @@ pub mod config;
 pub mod delta;
 pub mod entry;
 pub mod head;
+mod logger;
 pub mod patch;
 mod proto;
 pub mod reported;
@@ -22,13 +23,23 @@ const SUCCESS: i32 = 0;
 const FAILURE: i32 = -1;
 
 /// # Safety
+/// `callback` must be a valid function pointer.
+/// `user_data` must be valid for the lifetime of the callback and safe to
+/// access from any thread.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn lch_log_init(
+    callback: unsafe extern "C" fn(i32, *const c_char, *mut c_void),
+    user_data: *mut c_void,
+) {
+    logger::init(callback, user_data);
+}
+
+/// # Safety
 /// `work_dir` must be a valid, non-null, null-terminated C string.
 /// Returns a config handle on success, or NULL on failure.
 /// The caller must free the returned handle with `lch_deinit`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn lch_init(work_dir: *const c_char) -> *mut config::Config {
-    let _ = env_logger::Builder::from_env(env_logger::Env::new().filter("LEECH2_LOG")).try_init();
-
     if work_dir.is_null() {
         log::error!("lch_init(): Bad argument: work directory cannot be NULL");
         return std::ptr::null_mut();
