@@ -5,9 +5,9 @@
  * leech2 tracks CSV data sources, computes diffs between snapshots, and
  * produces SQL patches that can be applied to a downstream database.
  *
- * All functions (except lch_init, lch_deinit, lch_patch_free, and lch_sql_free) return
- * LCH_SUCCESS on success and LCH_FAILURE on error. Call lch_log_init() to
- * receive log messages through a callback.
+ * All functions (except lch_init, lch_deinit, lch_patch_free, and lch_sql_free)
+ * return LCH_SUCCESS on success and LCH_FAILURE on error. Call lch_log_init()
+ * to receive log messages through a callback.
  */
 
 #ifndef __LEECH2_H__
@@ -16,8 +16,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define LCH_SUCCESS       0
-#define LCH_FAILURE      -1
+#define LCH_SUCCESS 0
+#define LCH_FAILURE -1
 
 /**
  * Log severity levels.
@@ -26,11 +26,11 @@
  *       builds strip trace-level logging at compile time.
  */
 typedef enum {
-    LCH_LOG_ERROR = 1,
-    LCH_LOG_WARN  = 2,
-    LCH_LOG_INFO  = 3,
-    LCH_LOG_DEBUG = 4,
-    LCH_LOG_TRACE = 5,
+  LCH_LOG_ERROR = 1,
+  LCH_LOG_WARN = 2,
+  LCH_LOG_INFO = 3,
+  LCH_LOG_DEBUG = 4,
+  LCH_LOG_TRACE = 5,
 } lch_log_level_t;
 
 /**
@@ -41,11 +41,8 @@ typedef enum {
  *                   duration of the callback invocation.
  * @param user_data  Opaque pointer passed to lch_log_init().
  */
-typedef void (*lch_log_callback_t)(
-    lch_log_level_t level,
-    const char *message,
-    void *user_data
-);
+typedef void (*lch_log_callback_t)(lch_log_level_t level, const char *message,
+                                   void *user_data);
 
 /**
  * Initialize logging with a callback.
@@ -119,7 +116,8 @@ extern int lch_block_create(const lch_config_t *config);
  * @param[out] len  Receives the length of the patch buffer in bytes.
  * @return LCH_SUCCESS on success, LCH_FAILURE on error.
  */
-extern int lch_patch_create(const lch_config_t *config, const char *hash, uint8_t **buf, size_t *len);
+extern int lch_patch_create(const lch_config_t *config, const char *hash,
+                            uint8_t **buf, size_t *len);
 
 /**
  * Convert an encoded patch to SQL statements.
@@ -140,7 +138,8 @@ extern int lch_patch_create(const lch_config_t *config, const char *hash, uint8_
  *                  is empty. Free with lch_sql_free().
  * @return LCH_SUCCESS on success, LCH_FAILURE on error.
  */
-extern int lch_patch_to_sql(const lch_config_t *config, const uint8_t *buf, size_t len, char **sql);
+extern int lch_patch_to_sql(const lch_config_t *config, const uint8_t *buf,
+                            size_t len, char **sql);
 
 /**
  * Mark a patch as applied.
@@ -153,7 +152,8 @@ extern int lch_patch_to_sql(const lch_config_t *config, const uint8_t *buf, size
  * @param len     Length of @p buf in bytes.
  * @return LCH_SUCCESS on success, LCH_FAILURE on error.
  */
-extern int lch_patch_applied(const lch_config_t *config, const uint8_t *buf, size_t len);
+extern int lch_patch_applied(const lch_config_t *config, const uint8_t *buf,
+                             size_t len);
 
 /**
  * Free a patch buffer without marking it as applied.
