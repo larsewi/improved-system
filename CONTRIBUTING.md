@@ -191,6 +191,7 @@ See `tests/accept_recovery.rs` for acceptance tests covering these scenarios.
 ```
 src/
   lib.rs        C FFI entry points
+  logger.rs     Callback-based log dispatch for FFI consumers
   main.rs       CLI (lch binary)
   config.rs     TOML/JSON config parsing
   table.rs      CSV loading, in-memory table (HashMap<pk, values>)

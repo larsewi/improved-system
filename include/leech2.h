@@ -6,9 +6,8 @@
  * produces SQL patches that can be applied to a downstream database.
  *
  * All functions (except lch_init, lch_deinit, lch_patch_free, and lch_sql_free) return
- * LCH_SUCCESS on success and LCH_FAILURE on error. Errors are logged via
- * env_logger; set the LEECH2_LOG environment variable (e.g. LEECH2_LOG=debug)
- * for detailed output.
+ * LCH_SUCCESS on success and LCH_FAILURE on error. Call lch_log_init() to
+ * receive log messages through a callback.
  */
 
 #ifndef __LEECH2_H__
@@ -19,6 +18,46 @@
 
 #define LCH_SUCCESS       0
 #define LCH_FAILURE      -1
+
+/**
+ * Log severity levels.
+ *
+ * @note LCH_LOG_TRACE messages are only emitted in debug builds. Release
+ *       builds strip trace-level logging at compile time.
+ */
+typedef enum {
+    LCH_LOG_ERROR = 1,
+    LCH_LOG_WARN  = 2,
+    LCH_LOG_INFO  = 3,
+    LCH_LOG_DEBUG = 4,
+    LCH_LOG_TRACE = 5,
+} lch_log_level_t;
+
+/**
+ * Callback type for receiving log messages.
+ *
+ * @param level    Severity level of the message.
+ * @param message  Null-terminated log message string. Only valid for the
+ *                 duration of the callback invocation.
+ * @param user_data  Opaque pointer passed to lch_log_init().
+ */
+typedef void (*lch_log_callback_t)(
+    lch_log_level_t level,
+    const char *message,
+    void *user_data
+);
+
+/**
+ * Initialize logging with a callback.
+ *
+ * Installs a custom logger that delivers all log messages through @p callback.
+ * Must be called before lch_init() for the callback to receive messages.
+ * May be called again to replace the callback.
+ *
+ * @param callback   Function to receive log messages (must not be NULL).
+ * @param user_data  Opaque pointer forwarded to every callback invocation.
+ */
+extern void lch_log_init(lch_log_callback_t callback, void *user_data);
 
 /**
  * Opaque configuration handle.

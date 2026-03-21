@@ -5,12 +5,42 @@
 
 #include <leech2.h>
 
+typedef struct {
+  int count;
+} log_state_t;
+
+static void log_callback(lch_log_level_t level, const char *message,
+                         void *user_data) {
+  switch (level) {
+  case LCH_LOG_ERROR:
+    fprintf(stderr, "ERROR: %s\n", message);
+    break;
+  case LCH_LOG_WARN:
+    printf("WARN: %s\n", message);
+    break;
+  case LCH_LOG_INFO:
+    printf("INFO: %s\n", message);
+    break;
+  case LCH_LOG_DEBUG:
+    printf("DEBUG: %s\n", message);
+    break;
+  case LCH_LOG_TRACE:
+    printf("TRACE: %s\n", message);
+    break;
+  }
+  log_state_t *state = (log_state_t *)user_data;
+  state->count++;
+}
+
 int main(int argc, char *argv[]) {
   if (argc < 2) {
     fprintf(stderr, "Usage: %s <work_dir>\n", argv[0]);
     return EXIT_FAILURE;
   }
   const char *const work_dir = argv[1];
+
+  log_state_t log_state = {0};
+  lch_log_init(log_callback, &log_state);
 
   lch_config_t *config = lch_init(work_dir);
   if (config == NULL) {
@@ -51,6 +81,11 @@ int main(int argc, char *argv[]) {
   }
 
   lch_deinit(config);
+
+  if (log_state.count == 0) {
+    fprintf(stderr, "No log messages received\n");
+    return EXIT_FAILURE;
+  }
 
   return EXIT_SUCCESS;
 }
