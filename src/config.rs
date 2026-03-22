@@ -70,6 +70,81 @@ impl InjectedFieldConfig {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct ExcludeFilter {
+    #[serde(default)]
+    pub table: Vec<String>,
+    pub field: String,
+    pub equals: Option<String>,
+    pub contains: Option<String>,
+}
+
+impl ExcludeFilter {
+    /// Returns true if this rule applies to the given table.
+    /// An empty `table` list means the rule applies to all tables.
+    fn applies_to(&self, table_name: &str) -> bool {
+        self.table.is_empty() || self.table.iter().any(|name| name == table_name)
+    }
+
+    /// Returns true if `value` matches this exclusion rule.
+    /// When both `equals` and `contains` are set, either matching is sufficient.
+    fn matches(&self, value: &str) -> bool {
+        if let Some(ref expected) = self.equals
+            && value == expected
+        {
+            return true;
+        }
+        if let Some(ref substring) = self.contains
+            && value.contains(substring.as_str())
+        {
+            return true;
+        }
+        false
+    }
+}
+
+#[derive(Debug, Default, Deserialize)]
+pub struct FilterConfig {
+    #[serde(rename = "max-field-length")]
+    pub max_field_length: Option<usize>,
+    #[serde(default)]
+    pub exclude: Vec<ExcludeFilter>,
+}
+
+impl FilterConfig {
+    /// Returns `Some(reason)` if the record should be filtered out, `None` to keep.
+    pub fn should_filter(
+        &self,
+        table_name: &str,
+        field_names: &[String],
+        values: &[&str],
+    ) -> Option<String> {
+        if let Some(max_length) = self.max_field_length {
+            for (i, value) in values.iter().enumerate() {
+                if value.len() > max_length {
+                    return Some(format!(
+                        "field '{}' length {} exceeds max-field-length {}",
+                        field_names[i],
+                        value.len(),
+                        max_length
+                    ));
+                }
+            }
+        }
+        for exclude in &self.exclude {
+            if !exclude.applies_to(table_name) {
+                continue;
+            }
+            if let Some(position) = field_names.iter().position(|name| name == &exclude.field)
+                && exclude.matches(values[position])
+            {
+                return Some(format!("field '{}' matches exclude rule", exclude.field));
+            }
+        }
+        None
+    }
+}
+
+#[derive(Debug, Deserialize)]
 pub struct Config {
     #[serde(skip)]
     pub work_dir: PathBuf,
@@ -80,6 +155,8 @@ pub struct Config {
     pub tables: HashMap<String, TableConfig>,
     #[serde(default)]
     pub truncate: TruncateConfig,
+    #[serde(default)]
+    pub filters: FilterConfig,
 }
 
 #[derive(Debug, Deserialize)]
@@ -415,5 +492,198 @@ mod tests {
             make_field("name", "TEXT", true, None),
         ]);
         assert_ne!(config_a.field_hash(), config_b.field_hash());
+    }
+
+    fn make_exclude(
+        table: Vec<&str>,
+        field: &str,
+        equals: Option<&str>,
+        contains: Option<&str>,
+    ) -> ExcludeFilter {
+        ExcludeFilter {
+            table: table.into_iter().map(|s| s.to_string()).collect(),
+            field: field.to_string(),
+            equals: equals.map(|s| s.to_string()),
+            contains: contains.map(|s| s.to_string()),
+        }
+    }
+
+    #[test]
+    fn test_should_filter_max_field_length() {
+        let filter = FilterConfig {
+            max_field_length: Some(5),
+            exclude: vec![],
+        };
+        let fields = vec!["id".to_string(), "name".to_string()];
+
+        assert!(
+            filter
+                .should_filter("t", &fields, &["1", "Alice"])
+                .is_none()
+        );
+        assert!(
+            filter
+                .should_filter("t", &fields, &["1", "Roberto"])
+                .is_some()
+        );
+    }
+
+    #[test]
+    fn test_should_filter_exclude_equals() {
+        let filter = FilterConfig {
+            max_field_length: None,
+            exclude: vec![make_exclude(vec![], "status", Some("inactive"), None)],
+        };
+        let fields = vec!["id".to_string(), "status".to_string()];
+
+        assert!(
+            filter
+                .should_filter("t", &fields, &["1", "active"])
+                .is_none()
+        );
+        assert!(
+            filter
+                .should_filter("t", &fields, &["2", "inactive"])
+                .is_some()
+        );
+    }
+
+    #[test]
+    fn test_should_filter_exclude_contains() {
+        let filter = FilterConfig {
+            max_field_length: None,
+            exclude: vec![make_exclude(vec![], "desc", None, Some("DEPRECATED"))],
+        };
+        let fields = vec!["id".to_string(), "desc".to_string()];
+
+        assert!(
+            filter
+                .should_filter("t", &fields, &["1", "active item"])
+                .is_none()
+        );
+        assert!(
+            filter
+                .should_filter("t", &fields, &["2", "DEPRECATED old item"])
+                .is_some()
+        );
+    }
+
+    #[test]
+    fn test_should_filter_exclude_equals_and_contains() {
+        let filter = FilterConfig {
+            max_field_length: None,
+            exclude: vec![make_exclude(
+                vec![],
+                "status",
+                Some("inactive"),
+                Some("act"),
+            )],
+        };
+        let fields = vec!["id".to_string(), "status".to_string()];
+
+        // "inactive" matches equals
+        assert!(
+            filter
+                .should_filter("t", &fields, &["1", "inactive"])
+                .is_some()
+        );
+        // "active" matches contains
+        assert!(
+            filter
+                .should_filter("t", &fields, &["2", "active"])
+                .is_some()
+        );
+        // "disabled" matches neither
+        assert!(
+            filter
+                .should_filter("t", &fields, &["3", "disabled"])
+                .is_none()
+        );
+    }
+
+    /// An exclude rule referencing a field that does not exist in the table's
+    /// field list is silently skipped — no records are filtered.
+    #[test]
+    fn test_should_filter_exclude_skipped_when_field_not_in_table() {
+        let filter = FilterConfig {
+            max_field_length: None,
+            exclude: vec![make_exclude(vec![], "nonexistent", Some("value"), None)],
+        };
+        let fields = vec!["id".to_string(), "name".to_string()];
+
+        assert!(
+            filter
+                .should_filter("t", &fields, &["1", "Alice"])
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn test_should_filter_exclude_table_scoped() {
+        let filter = FilterConfig {
+            max_field_length: None,
+            exclude: vec![make_exclude(
+                vec!["users"],
+                "status",
+                Some("inactive"),
+                None,
+            )],
+        };
+        let fields = vec!["id".to_string(), "status".to_string()];
+
+        // Applies to "users" table
+        assert!(
+            filter
+                .should_filter("users", &fields, &["1", "inactive"])
+                .is_some()
+        );
+        // Does not apply to "orders" table
+        assert!(
+            filter
+                .should_filter("orders", &fields, &["1", "inactive"])
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn test_should_filter_exclude_multiple_tables() {
+        let filter = FilterConfig {
+            max_field_length: None,
+            exclude: vec![make_exclude(
+                vec!["users", "admins"],
+                "status",
+                Some("inactive"),
+                None,
+            )],
+        };
+        let fields = vec!["id".to_string(), "status".to_string()];
+
+        assert!(
+            filter
+                .should_filter("users", &fields, &["1", "inactive"])
+                .is_some()
+        );
+        assert!(
+            filter
+                .should_filter("admins", &fields, &["1", "inactive"])
+                .is_some()
+        );
+        assert!(
+            filter
+                .should_filter("orders", &fields, &["1", "inactive"])
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn test_should_filter_default_config() {
+        let filter = FilterConfig::default();
+        let fields = vec!["id".to_string(), "name".to_string()];
+
+        assert!(
+            filter
+                .should_filter("t", &fields, &["1", "Alice"])
+                .is_none()
+        );
     }
 }

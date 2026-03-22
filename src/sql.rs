@@ -541,6 +541,7 @@ mod tests {
             compression: crate::config::CompressionConfig::default(),
             tables: HashMap::from([("test_table".to_string(), table_config)]),
             truncate: TruncateConfig::default(),
+            filters: crate::config::FilterConfig::default(),
         };
 
         let patch = Patch {
@@ -590,6 +591,7 @@ mod tests {
             compression: crate::config::CompressionConfig::default(),
             tables: HashMap::from([("test_table".to_string(), table_config)]),
             truncate: TruncateConfig::default(),
+            filters: crate::config::FilterConfig::default(),
         };
 
         let patch = Patch {
@@ -637,6 +639,7 @@ mod tests {
             compression: crate::config::CompressionConfig::default(),
             tables: HashMap::from([("test_table".to_string(), table_config)]),
             truncate: TruncateConfig::default(),
+            filters: crate::config::FilterConfig::default(),
         };
 
         let patch = Patch {

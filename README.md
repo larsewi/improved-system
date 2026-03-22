@@ -134,6 +134,43 @@ value = "production"
 The `type` field accepts the same values as table field types (`TEXT`, `NUMBER`,
 `BOOLEAN`).
 
+### Filters
+
+An optional `[filters]` section drops records at CSV load time. Filtered
+records never enter state, deltas, or SQL output.
+
+```toml
+[filters]
+max-field-length = 1024  # drop records where any field value exceeds this length
+
+[[filters.exclude]]
+field = "status"         # field name to check
+equals = "inactive"      # exact value — matching records are dropped
+
+[[filters.exclude]]
+field = "description"
+contains = "DEPRECATED"  # substring — records containing this are dropped
+
+[[filters.exclude]]
+table = ["staging_orders"]  # only apply to specific tables (default: all)
+field = "region"
+equals = "test"
+```
+
+- `max-field-length`: Optional. Any record where any field value exceeds this
+  character length is dropped.
+- `[[filters.exclude]]`: Optional list of exclusion rules. Each rule specifies a
+  `field` and one or both of `equals` (exact match) and `contains` (substring
+  match). When both are set, either matching is sufficient to drop the record.
+- `table`: Optional list of table names the rule applies to. When omitted, the
+  rule applies to all tables. If the named field doesn't exist in a table, the
+  rule is silently skipped.
+
+Filtering happens before state computation. When a previously-included record
+starts matching a filter (e.g., a status field changes to an excluded value), it
+appears as a DELETE in the next delta. When a previously-filtered record stops
+matching, it appears as an INSERT.
+
 ### Compression
 
 Patches are compressed with zstd by default. An optional `[compression]` section
