@@ -5,7 +5,7 @@ use std::path::Path;
 
 use anyhow::{Context, Result};
 
-use crate::config::TableConfig;
+use crate::config::{FilterConfig, TableConfig};
 
 /// A table with records stored in a hash map for efficient lookup.
 /// Fields are ordered with primary key columns first, followed by subsidiary columns.
@@ -54,7 +54,12 @@ impl fmt::Display for crate::proto::table::Table {
 
 impl Table {
     /// Loads a table from a CSV file.
-    pub fn load(work_dir: &Path, name: &str, config: &TableConfig) -> Result<Self> {
+    pub fn load(
+        work_dir: &Path,
+        name: &str,
+        config: &TableConfig,
+        filters: &FilterConfig,
+    ) -> Result<Self> {
         let path = work_dir.join(&config.source);
         let file =
             File::open(&path).with_context(|| format!("failed to open '{}'", path.display()))?;
@@ -63,7 +68,7 @@ impl Table {
             .from_reader(file);
 
         log::debug!("Parsing csv file '{}'...", path.display());
-        let table = Self::parse_csv(config, reader)?;
+        let table = Self::parse_csv(name, config, filters, reader)?;
 
         log::info!(
             "Loaded table '{}' with {} records",
@@ -74,7 +79,12 @@ impl Table {
         Ok(table)
     }
 
-    fn parse_csv(config: &TableConfig, mut reader: csv::Reader<File>) -> Result<Self> {
+    fn parse_csv(
+        table_name: &str,
+        config: &TableConfig,
+        filters: &FilterConfig,
+        mut reader: csv::Reader<File>,
+    ) -> Result<Self> {
         let field_names = config.field_names();
         let primary_key = config.primary_key();
 
@@ -136,6 +146,13 @@ impl Table {
                     field_names.len(),
                     record.len()
                 );
+            }
+
+            let values: Vec<&str> = field_indices.iter().map(|&i| &record[i]).collect();
+            let reason = filters.should_filter(table_name, &field_names, &values);
+            if let Some(reason) = reason {
+                log::debug!("Filtered record at row {}: {}", row_num + 1, reason);
+                continue;
             }
 
             let primary_key: Vec<String> = primary_indices

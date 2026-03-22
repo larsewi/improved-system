@@ -82,7 +82,7 @@ impl State {
         let mut tables: HashMap<String, Table> = HashMap::new();
 
         for (name, table_config) in &config.tables {
-            let table = Table::load(&config.work_dir, name, table_config)?;
+            let table = Table::load(&config.work_dir, name, table_config, &config.filters)?;
             tables.insert(name.clone(), table);
         }
 
