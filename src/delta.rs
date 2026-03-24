@@ -260,12 +260,12 @@ impl Delta {
         } else if let Some(update) = self.updates.get_mut(&key) {
             // Rule 15: update then update → update(old1 → new2)
             // Merge sparse-expanded updates: only touch positions that actually
-            // changed in the current update.
+            // changed in the child update.
             log::trace!("Rule 15: update + update merged for key {:?}", key);
             for i in 0..update.0.len() {
                 let parent_changed = update.0[i] != update.1[i];
-                let current_changed = old_value[i] != new_value[i];
-                if current_changed {
+                let child_changed = old_value[i] != new_value[i];
+                if child_changed {
                     update.1[i] = new_value[i].clone();
                     if !parent_changed {
                         update.0[i] = old_value[i].clone();
@@ -691,7 +691,7 @@ mod tests {
 
     // Rule 1: child insert, no parent → insert passes through
     #[test]
-    fn test_merge_rule1_current_insert_only() {
+    fn test_merge_rule1_child_insert_only() {
         let mut parent_delta = empty_delta();
         let mut child_delta = empty_delta();
         child_delta
@@ -711,7 +711,7 @@ mod tests {
 
     // Rule 2: child delete, no parent → delete passes through
     #[test]
-    fn test_merge_rule2_current_delete_only() {
+    fn test_merge_rule2_child_delete_only() {
         let mut parent_delta = empty_delta();
         let mut child_delta = empty_delta();
         child_delta
@@ -731,7 +731,7 @@ mod tests {
 
     // Rule 3: child update, no parent → update passes through
     #[test]
-    fn test_merge_rule3_current_update_only() {
+    fn test_merge_rule3_child_update_only() {
         let mut parent_delta = empty_delta();
         let mut child_delta = empty_delta();
         child_delta.updates.insert(
@@ -826,7 +826,7 @@ mod tests {
         assert!(parent_delta.updates.is_empty());
     }
 
-    // Rule 8: parent delete, no current → delete stays
+    // Rule 8: parent delete, no child → delete stays
     #[test]
     fn test_merge_rule8_parent_delete_only() {
         let mut parent_delta = empty_delta();
@@ -918,7 +918,7 @@ mod tests {
         assert!(merged_delta.is_err());
     }
 
-    // Rule 12: parent update, no current → update stays
+    // Rule 12: parent update, no child → update stays
     #[test]
     fn test_merge_rule12_parent_update_only() {
         let mut parent_delta = empty_delta();
