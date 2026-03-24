@@ -215,17 +215,6 @@ include/        C header (leech2.h)
 tests/          Acceptance tests
 ```
 
-## Core data model
-
-- **Config** (`src/config.rs`) -- TOML/JSON config defining tables, their CSV source files, field names, primary keys, and optional injected fields. Returned by `Config::load()` and passed by reference to functions that need it.
-- **Table** (`src/table.rs`) -- In-memory representation of a CSV table. Records stored as `HashMap<Vec<String>, Vec<String>>` (primary key -> subsidiary columns). Fields are reordered so primary key columns come first.
-- **State** (`src/state.rs`) -- Snapshot of all tables at a point in time. Serialized to protobuf and persisted as `STATE` file.
-- **Delta** (`src/delta.rs`) -- Diff between two states for a single table: inserts, deletes, and updates. Contains the merge logic implementing 15 rules (see [DELTA_MERGING_RULES.md](DELTA_MERGING_RULES.md)).
-- **Block** (`src/block.rs`) -- A content-addressable unit containing a timestamp, parent hash, and a map of `TableChange` entries keyed by table name. Each `TableChange` wraps an optional delta: present for normal changes, absent (`None`) when a table's field layout changed. Blocks form a linked chain, SHA-1 hashed and stored by hash. A companion `BlockHeader` proto message (defined in `block.proto`) allows reading just the parent hash and timestamp from a block file without decoding the payload, used by patch consolidation and truncation for lightweight chain traversal.
-- **Patch** (`src/patch.rs`) -- Consolidates multiple blocks from HEAD back to a `last_known` hash by merging deltas per table independently. Tables with layout changes (delta-less `TableChange`) go directly to full state. Each table's consolidated delta is compared against its full state, and the smaller representation is chosen. A single patch can contain a mix of delta and state tables. Patches also carry per-table `field_hashes` for agent-hub validation.
-- **Head** (`src/head.rs`) -- Reads/writes the `HEAD` file tracking the current block hash.
-- **Storage** (`src/storage.rs`) -- File I/O with `fs2` file locking (exclusive for writes, shared for reads).
-
 ## Work directory layout
 
 All leech2 state lives in a single directory (`.leech2/` when using the CLI,
