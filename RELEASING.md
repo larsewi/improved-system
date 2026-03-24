@@ -3,7 +3,6 @@
 ## Prerequisites
 
 - Push access to the repository
-- The `version` field in `Cargo.toml` must match the version you intend to release
 
 ## Steps
 
@@ -24,13 +23,13 @@
 
 3. **Trigger the release workflow**
 
-   Go to **Actions** → **Release** → **Run workflow** in the GitHub UI. Enter
-   the version number (e.g., `0.2.0`) and click **Run workflow**.
+   Go to **Actions** → **Release** → **Run workflow** in the GitHub UI. Select
+   the branch to release from and click **Run workflow**.
 
 4. **Wait for the workflow to complete**
 
    The workflow will:
-   - Verify that the input version matches `Cargo.toml`
+   - Read the version from `Cargo.toml`
    - Build release binaries for four targets:
      - Linux x86_64
      - Linux aarch64

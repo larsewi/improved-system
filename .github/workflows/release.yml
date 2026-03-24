@@ -2,10 +2,6 @@ name: Release
 
 on:
   workflow_dispatch:
-    inputs:
-      version:
-        description: "Release version (e.g., 0.2.0) — must match Cargo.toml version"
-        required: true
 
 env:
   CARGO_TERM_COLOR: always
@@ -13,21 +9,22 @@ env:
 jobs:
   validate:
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v5
 
-      - name: Verify version matches Cargo.toml
+      - name: Read version from Cargo.toml
+        id: version
         run: |
-          CARGO_VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
-          if [ "$CARGO_VERSION" != "${{ inputs.version }}" ]; then
-            echo "::error::Cargo.toml version ($CARGO_VERSION) does not match input version (${{ inputs.version }})"
-            exit 1
-          fi
+          VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Releasing version: ${VERSION}"
 
       - name: Check tag does not already exist
         run: |
-          if git rev-parse "v${{ inputs.version }}" >/dev/null 2>&1; then
-            echo "::error::Tag v${{ inputs.version }} already exists"
+          if git rev-parse "v${{ steps.version.outputs.version }}" >/dev/null 2>&1; then
+            echo "::error::Tag v${{ steps.version.outputs.version }} already exists"
             exit 1
           fi
 
@@ -100,7 +97,7 @@ jobs:
 
       - name: Create tarball
         run: |
-          DIR="leech2-${{ inputs.version }}-${{ matrix.artifact }}"
+          DIR="leech2-${{ needs.validate.outputs.version }}-${{ matrix.artifact }}"
           mkdir -p "dist/${DIR}"
           cp "target/${{ matrix.target }}/release/lch" "dist/${DIR}/"
           cp "target/${{ matrix.target }}/release/libleech2.${{ steps.libext.outputs.ext }}" "dist/${DIR}/"
@@ -130,7 +127,7 @@ jobs:
           path: target/${{ matrix.target }}/generate-rpm/*.rpm
 
   release:
-    needs: build
+    needs: [validate, build]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -139,8 +136,8 @@ jobs:
 
       - name: Create and push tag
         run: |
-          git tag "v${{ inputs.version }}"
-          git push origin "v${{ inputs.version }}"
+          git tag "v${{ needs.validate.outputs.version }}"
+          git push origin "v${{ needs.validate.outputs.version }}"
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4
@@ -157,7 +154,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "v${{ inputs.version }}" \
-            --title "leech2 v${{ inputs.version }}" \
+          gh release create "v${{ needs.validate.outputs.version }}" \
+            --title "leech2 v${{ needs.validate.outputs.version }}" \
             --generate-notes \
             release-assets/*
