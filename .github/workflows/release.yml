@@ -146,6 +146,13 @@ jobs:
           find artifacts -type f \( -name '*.tar.gz' -o -name '*.deb' -o -name '*.rpm' \) \
             -exec cp {} release-assets/ \;
 
+      - name: Scan release assets for viruses
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clamav
+          sudo freshclam
+          clamscan --recursive --infected release-assets/
+
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
