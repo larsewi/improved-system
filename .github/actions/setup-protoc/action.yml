@@ -26,6 +26,7 @@ runs:
         if echo "$OS" | grep -qi "mingw\|msys\|cygwin\|windows_nt"; then
           unzip "${ZIPFILE}" -d "$HOME/.local"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          echo "PROTOC=$HOME/.local/bin/protoc.exe" >> "$GITHUB_ENV"
         else
           sudo unzip "${ZIPFILE}" -d /usr/local
         fi
