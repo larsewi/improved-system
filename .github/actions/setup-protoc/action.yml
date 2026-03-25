@@ -1,19 +1,13 @@
 name: Setup protoc
 description: Install protobuf compiler from official releases
 
-inputs:
-  version:
-    description: Protoc version to install
-    required: false
-    default: "34.1"
-
 runs:
   using: composite
   steps:
     - name: Install protobuf compiler
       shell: bash
       run: |
-        PROTOC_VERSION="${{ inputs.version }}"
+        PROTOC_VERSION=$(cat "$GITHUB_WORKSPACE/.protoc-version")
         OS=$(uname -s)
         ARCH=$(uname -m)
         if [ "$OS" = "Linux" ] && [ "$ARCH" = "x86_64" ]; then
