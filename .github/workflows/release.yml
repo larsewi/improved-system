@@ -84,9 +84,9 @@ jobs:
         shell: bash
         run: |
           case "${{ runner.os }}" in
-            macOS)   echo "lib=dylib" >> "$GITHUB_OUTPUT"; echo "bin=lch" >> "$GITHUB_OUTPUT" ;;
-            Windows) echo "lib=dll" >> "$GITHUB_OUTPUT"; echo "bin=lch.exe" >> "$GITHUB_OUTPUT" ;;
-            *)       echo "lib=so" >> "$GITHUB_OUTPUT"; echo "bin=lch" >> "$GITHUB_OUTPUT" ;;
+            macOS)   echo "lib=libleech2.dylib" >> "$GITHUB_OUTPUT"; echo "bin=lch" >> "$GITHUB_OUTPUT" ;;
+            Windows) echo "lib=leech2.dll" >> "$GITHUB_OUTPUT"; echo "bin=lch.exe" >> "$GITHUB_OUTPUT" ;;
+            *)       echo "lib=libleech2.so" >> "$GITHUB_OUTPUT"; echo "bin=lch" >> "$GITHUB_OUTPUT" ;;
           esac
 
       - name: Create tarball
@@ -95,7 +95,7 @@ jobs:
           DIR="leech2-${{ needs.validate.outputs.version }}-${{ matrix.artifact }}"
           mkdir -p "dist/${DIR}"
           cp "target/${{ matrix.target }}/release/${{ steps.ext.outputs.bin }}" "dist/${DIR}/"
-          cp "target/${{ matrix.target }}/release/libleech2.${{ steps.ext.outputs.lib }}" "dist/${DIR}/"
+          cp "target/${{ matrix.target }}/release/${{ steps.ext.outputs.lib }}" "dist/${DIR}/"
           cp include/leech2.h "dist/${DIR}/"
           cp README.md "dist/${DIR}/"
           cp LICENSE "dist/${DIR}/"
@@ -108,7 +108,7 @@ jobs:
           DIR="leech2-${{ needs.validate.outputs.version }}-${{ matrix.artifact }}"
           mkdir -p "dist/${DIR}"
           cp "target/${{ matrix.target }}/release/${{ steps.ext.outputs.bin }}" "dist/${DIR}/"
-          cp "target/${{ matrix.target }}/release/libleech2.${{ steps.ext.outputs.lib }}" "dist/${DIR}/"
+          cp "target/${{ matrix.target }}/release/${{ steps.ext.outputs.lib }}" "dist/${DIR}/"
           cp include/leech2.h "dist/${DIR}/"
           cp README.md "dist/${DIR}/"
           cp LICENSE "dist/${DIR}/"
