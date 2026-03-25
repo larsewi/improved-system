@@ -118,11 +118,6 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Create and push tag
-        run: |
-          git tag "v${{ needs.validate.outputs.version }}"
-          git push origin "v${{ needs.validate.outputs.version }}"
-
       - name: Download all artifacts
         uses: actions/download-artifact@v8
         with:
