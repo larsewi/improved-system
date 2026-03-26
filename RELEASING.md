@@ -1,5 +1,12 @@
 # Releasing leech2
 
+This project follows [Semantic Versioning](https://semver.org/). Given a
+version **MAJOR.MINOR.PATCH**, increment the:
+
+- **MAJOR** version for incompatible API changes
+- **MINOR** version for new features
+- **PATCH** version for bug fixes
+
 ## Steps
 
 1. **Bump the version**
@@ -52,4 +59,4 @@ If the workflow fails before creating the tag, fix the issue and re-run the
 workflow with the same version.
 
 If the workflow fails after the tag has been pushed, delete the tag before
-retrying:
+retrying.
