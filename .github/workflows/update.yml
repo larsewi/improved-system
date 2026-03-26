@@ -20,7 +20,7 @@ jobs:
         with:
           token: ${{ secrets.PAT }}
           commit-message: "Updated Cargo dependencies"
-          branch: auto/update-dependencies
+          branch: auto/update-cargo
           title: "Updated Cargo dependencies"
           body: |
             Automated weekly update of Cargo dependencies.
