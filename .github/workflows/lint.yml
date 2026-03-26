@@ -1,0 +1,46 @@
+name: Lint
+
+on:
+  pull_request:
+    branches: ["master"]
+  workflow_dispatch: # Allows manual triggering
+
+jobs:
+  rust:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install protobuf compiler
+        uses: ./.github/actions/setup-protoc
+
+      - name: Run clippy
+        run: cargo clippy -- -D warnings
+
+  c:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Run cppcheck
+        run: |
+          sudo apt-get update && sudo apt-get install -y cppcheck
+          FILES=$(find . -path ./target -prune -o \( -name '*.c' -o -name '*.h' \) -print)
+          if [ -n "$FILES" ]; then
+            echo "$FILES" | xargs cppcheck --error-exitcode=1 --enable=warning,style,performance,portability
+          fi
+
+  shell:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Run shellcheck
+        run: |
+          FILES=$(find . -path ./target -prune -o -name '*.sh' -print)
+          if [ -n "$FILES" ]; then
+            echo "$FILES" | xargs shellcheck
+          fi
