@@ -40,6 +40,8 @@ enum Cmd {
     Log,
     /// Alias for `patch sql`
     Sql,
+    /// Alias for `patch applied`
+    Applied,
 }
 
 #[derive(Subcommand)]
@@ -359,6 +361,9 @@ fn run(cli: Cli) -> Result<()> {
         Cmd::Sql => {
             let output = cmd_patch_sql(&config)?;
             print_with_pager(&output);
+        }
+        Cmd::Applied => {
+            cmd_patch_applied(&config)?;
         }
     }
 
