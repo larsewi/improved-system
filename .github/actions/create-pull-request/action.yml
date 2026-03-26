@@ -37,7 +37,6 @@ runs:
       env:
         GH_TOKEN: ${{ inputs.token }}
       run: |
-        gh auth setup-git
         git config user.name "github-actions[bot]"
         git config user.email "github-actions[bot]@users.noreply.github.com"
         git checkout -b "${{ inputs.branch }}"
