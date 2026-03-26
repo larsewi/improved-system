@@ -92,7 +92,7 @@ type = "NUMBER"
 ```
 
 | Type      | SQL literal    | Notes                                        |
-|-----------|----------------|----------------------------------------------|
+| --------- | -------------- | -------------------------------------------- |
 | `TEXT`    | `'value'`      | Single quotes, escaped                       |
 | `NUMBER`  | `42` / `3.14`  | Validated as finite `f64`                    |
 | `BOOLEAN` | `TRUE`/`FALSE` | Accepts `true/false`, `1/0`, `t/f`, `yes/no` |

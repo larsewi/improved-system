@@ -28,6 +28,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Never include a "Test plan" section in pull request descriptions unless specificly asked.
 - Commit often, but ensure each commit leaves leech2 in a working state (builds, tests pass, clippy clean).
 - Every commit message must include a `Signed-off-by` line. Example:
+
   ```
   Short summary of the change
 

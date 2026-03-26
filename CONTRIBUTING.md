@@ -164,16 +164,17 @@ errors. The library is designed to always produce SQL that is safe to apply,
 even when the block chain or metadata is incomplete.
 
 **Scenario/behavior:**
-* **REPORTED block truncated:** `Patch::create` can't resolve the hash → falls
+
+- **REPORTED block truncated:** `Patch::create` can't resolve the hash → falls
   back to full state (TRUNCATE + INSERT)
-* **REPORTED file deleted:** CLI/FFI falls back to genesis → `Patch::create`
+- **REPORTED file deleted:** CLI/FFI falls back to genesis → `Patch::create`
   produces full state
-* **HEAD file deleted:** `head::load` returns genesis → empty patch. Next
+- **HEAD file deleted:** `head::load` returns genesis → empty patch. Next
   `Block::create` stores a block with an empty payload (stale STATE file is
   ignored), and the STATE file is overwritten with the current snapshot
-* **Block chain broken:** (middle block deleted) | Delta consolidation fails →
+- **Block chain broken:** (middle block deleted) | Delta consolidation fails →
   falls back to full state
-* **STATE file deleted:** (chain intact) | Delta consolidation still succeeds
+- **STATE file deleted:** (chain intact) | Delta consolidation still succeeds
   via block chain; STATE is not needed
 
 The key invariant: when the reference point is unknown or unreliable (genesis,
@@ -221,7 +222,7 @@ All leech2 state lives in a single directory (`.leech2/` when using the CLI,
 or any path passed to `lch_init()`). It contains:
 
 | File                 | Description                                                          |
-|----------------------|----------------------------------------------------------------------|
+| -------------------- | -------------------------------------------------------------------- |
 | `config.{toml,json}` | Table definitions and field schemas                                  |
 | `HEAD`               | Current block hash (40-character hex string)                         |
 | `REPORTED`           | Hash of last successfully reported patch head (used by truncation)   |

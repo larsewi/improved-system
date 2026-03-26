@@ -22,10 +22,10 @@ represents the combined effect of both.
 
 Imagine a `users` table with primary key `id` and a `name` column:
 
-| id  | name    |
-|-----|---------|
-| 1   | Alice   |
-| 2   | Bob     |
+| id  | name  |
+| --- | ----- |
+| 1   | Alice |
+| 2   | Bob   |
 
 Throughout this document we will show how different sequences of operations on
 this table get merged.
@@ -40,13 +40,13 @@ When a key appears in only one of the two blocks, there is no conflict. The
 operation passes through to the result unchanged.
 
 | Rule | Parent                   | Child                    | Result                   |
-|------|--------------------------|--------------------------|--------------------------|
-|   1  |                          | `insert(key, val)`       | `insert(key, val)`       |
-|   2  |                          | `delete(key, val)`       | `delete(key, val)`       |
-|   3  |                          | `update(key, old → new)` | `update(key, old → new)` |
-|   4  | `insert(key, val)`       |                          | `insert(key, val)`       |
-|   8  | `delete(key, val)`       |                          | `delete(key, val)`       |
-|  12  | `update(key, old → new)` |                          | `update(key, old → new)` |
+| ---- | ------------------------ | ------------------------ | ------------------------ |
+| 1    |                          | `insert(key, val)`       | `insert(key, val)`       |
+| 2    |                          | `delete(key, val)`       | `delete(key, val)`       |
+| 3    |                          | `update(key, old → new)` | `update(key, old → new)` |
+| 4    | `insert(key, val)`       |                          | `insert(key, val)`       |
+| 8    | `delete(key, val)`       |                          | `delete(key, val)`       |
+| 12   | `update(key, old → new)` |                          | `update(key, old → new)` |
 
 **Example (Rule 1):** Parent has no changes for key `3`. Child inserts a new
 user `(3, Charlie)`. Result: `insert(3, Charlie)`.
@@ -62,11 +62,11 @@ These rules represent logically impossible combinations. They always produce an
 error regardless of the values involved (shown as `X` meaning "don't care").
 
 | Rule | Parent               | Child                | Result       |
-|------|----------------------|----------------------|--------------|
-|   5  | `insert(key, X)`     | `insert(key, X)`     | `error(key)` |
-|  10  | `delete(key, X)`     | `delete(key, X)`     | `error(key)` |
-|  11  | `delete(key, X)`     | `update(key, X → X)` | `error(key)` |
-|  13  | `update(key, X → X)` | `insert(key, X)`     | `error(key)` |
+| ---- | -------------------- | -------------------- | ------------ |
+| 5    | `insert(key, X)`     | `insert(key, X)`     | `error(key)` |
+| 10   | `delete(key, X)`     | `delete(key, X)`     | `error(key)` |
+| 11   | `delete(key, X)`     | `update(key, X → X)` | `error(key)` |
+| 13   | `update(key, X → X)` | `insert(key, X)`     | `error(key)` |
 
 **Rule 5 — Double insert:** You cannot insert the same key twice. If Parent
 already inserted user `3`, Child cannot insert user `3` again.
@@ -84,8 +84,8 @@ exist. Inserting it again in Child is a contradiction.
 ### Rule 6 — Insert then delete (cancels out)
 
 | Rule | Parent           | Child            | Result |
-|------|------------------|------------------|--------|
-|   6  | `insert(key, X)` | `delete(key, X)` |        |
+| ---- | ---------------- | ---------------- | ------ |
+| 6    | `insert(key, X)` | `delete(key, X)` |        |
 
 An insert followed by a delete always cancels out, regardless of values. The
 values may differ because intermediate operations (such as updates in blocks
@@ -102,8 +102,8 @@ the net effect is: the row was added and then removed — so the result is empty
 ### Rule 7 — Insert then update
 
 | Rule | Parent              | Child                   | Result              |
-|------|---------------------|-------------------------|---------------------|
-|   7  | `insert(key, val1)` | `update(key, X → val2)` | `insert(key, val2)` |
+| ---- | ------------------- | ----------------------- | ------------------- |
+| 7    | `insert(key, val1)` | `update(key, X → val2)` | `insert(key, val2)` |
 
 If a row was inserted and later updated, the combined effect is an insert with
 the final value. The update's old value does not matter for the result.
@@ -117,17 +117,17 @@ result, the row simply appeared with the name `Charles`.
 ### Rules 9a, 9b — Delete then insert
 
 | Rule | Parent              | Child               | Result                     |
-|------|---------------------|---------------------|----------------------------|
-|  9a  | `delete(key, val)`  | `insert(key, val)`  |                            |
-|  9b  | `delete(key, val1)` | `insert(key, val2)` | `update(key, val1 → val2)` |
+| ---- | ------------------- | ------------------- | -------------------------- |
+| 9a   | `delete(key, val)`  | `insert(key, val)`  |                            |
+| 9b   | `delete(key, val1)` | `insert(key, val2)` | `update(key, val1 → val2)` |
 
-**Rule 9a:** If we delete a row and then re-insert it with the *same* value, the
+**Rule 9a:** If we delete a row and then re-insert it with the _same_ value, the
 two operations cancel out — the row is back to its original state.
 
 **Example:** Parent deletes `(2, Bob)`. Child re-inserts `(2, Bob)`. Result:
 nothing changed.
 
-**Rule 9b:** If we delete a row and re-insert it with a *different* value, the
+**Rule 9b:** If we delete a row and re-insert it with a _different_ value, the
 net effect is an update from the old value to the new value.
 
 **Example:** Parent deletes `(2, Bob)`. Child inserts `(2, Robert)`. Result:
@@ -139,9 +139,9 @@ changed.
 ### Rules 14a, 14b — Update then delete
 
 | Rule | Parent                   | Child              | Result             |
-|------|--------------------------|--------------------|--------------------|
-|  14a | `update(key, old → new)` | `delete(key, new)` | `delete(key, old)` |
-|  14b | `update(key, X → new)`   | `delete(key, val)` | `error(key)`       |
+| ---- | ------------------------ | ------------------ | ------------------ |
+| 14a  | `update(key, old → new)` | `delete(key, new)` | `delete(key, old)` |
+| 14b  | `update(key, X → new)`   | `delete(key, val)` | `error(key)`       |
 
 In rule 14b, `val ≠ new`.
 
@@ -154,7 +154,7 @@ state before Parent — is that the row with its original value was removed.
 Alicia)`. Result: `delete(1, Alice)` — the merged delta records that the row
 with value `Alice` (the value before any of these changes) was deleted.
 
-**Rule 14b:** If the delete's value does *not* match the update's new value,
+**Rule 14b:** If the delete's value does _not_ match the update's new value,
 this is a genuine conflict.
 
 **Example:** Parent updates key `1` from `Alice` to `Alicia`. Child claims to
@@ -165,9 +165,9 @@ inconsistent.
 
 ### Rule 15 — Update then update
 
-| Rule | Parent                   | Child                    | Result                   |
-|------|--------------------------|--------------------------|--------------------------|
-|  15  | `update(key, old → X)`   | `update(key, X → new)`   | `update(key, old → new)` |
+| Rule | Parent                 | Child                  | Result                   |
+| ---- | ---------------------- | ---------------------- | ------------------------ |
+| 15   | `update(key, old → X)` | `update(key, X → new)` | `update(key, old → new)` |
 
 When two updates are stacked, the result is an update from the first update's
 old value to the second update's new value. The intermediate value (`X`) does
@@ -181,23 +181,23 @@ not matter for the result.
 ## Quick reference
 
 | Rule | Parent   | Child     | Result              |
-|------|----------|-----------|---------------------|
-|   1  |          | `insert`  | `insert`            |
-|   2  |          | `delete`  | `delete`            |
-|   3  |          | `update`  | `update`            |
-|   4  | `insert` |           | `insert`            |
-|   5  | `insert` | `insert`  | `error`             |
-|   6  | `insert` | `delete`  |                     |
-|   7  | `insert` | `update`  | `insert(new val)`   |
-|   8  | `delete` |           | `delete`            |
-|  9a  | `delete` | `insert=` |                     |
-|  9b  | `delete` | `insert≠` | `update(old → new)` |
-|  10  | `delete` | `delete`  | `error`             |
-|  11  | `delete` | `update`  | `error`             |
-|  12  | `update` |           | `update`            |
-|  13  | `update` | `insert`  | `error`             |
-|  14a | `update` | `delete=` | `delete(old)`       |
-|  14b | `update` | `delete≠` | `error`             |
-|  15  | `update` | `update`  | `update(old → new)` |
+| ---- | -------- | --------- | ------------------- |
+| 1    |          | `insert`  | `insert`            |
+| 2    |          | `delete`  | `delete`            |
+| 3    |          | `update`  | `update`            |
+| 4    | `insert` |           | `insert`            |
+| 5    | `insert` | `insert`  | `error`             |
+| 6    | `insert` | `delete`  |                     |
+| 7    | `insert` | `update`  | `insert(new val)`   |
+| 8    | `delete` |           | `delete`            |
+| 9a   | `delete` | `insert=` |                     |
+| 9b   | `delete` | `insert≠` | `update(old → new)` |
+| 10   | `delete` | `delete`  | `error`             |
+| 11   | `delete` | `update`  | `error`             |
+| 12   | `update` |           | `update`            |
+| 13   | `update` | `insert`  | `error`             |
+| 14a  | `update` | `delete=` | `delete(old)`       |
+| 14b  | `update` | `delete≠` | `error`             |
+| 15   | `update` | `update`  | `update(old → new)` |
 
 `=` means values match, `≠` means values differ.
