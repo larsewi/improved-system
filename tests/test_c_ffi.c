@@ -1,3 +1,6 @@
+/* Smoke test for the C FFI: exercises every public API function in leech2.h
+ * to verify that the shared library links, runs, and returns success. */
+
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -73,13 +76,24 @@ int main(int argc, char *argv[]) {
     return EXIT_FAILURE;
   }
 
-  lch_patch_applied(config, buf, len);
-  lch_patch_free(buf, len);
-
-  if (sql != NULL) {
-    lch_sql_free(sql);
+  ret = lch_patch_applied(config, buf, len);
+  if (ret == LCH_FAILURE) {
+    fprintf(stderr, "lch_patch_applied failed\n");
+    lch_patch_free(buf, len);
+    lch_deinit(config);
+    return EXIT_FAILURE;
   }
 
+  ret = lch_patch_failed(config);
+  if (ret == LCH_FAILURE) {
+    fprintf(stderr, "lch_patch_failed failed\n");
+    lch_patch_free(buf, len);
+    lch_deinit(config);
+    return EXIT_FAILURE;
+  }
+
+  lch_patch_free(buf, len);
+  lch_sql_free(sql);
   lch_deinit(config);
 
   if (log_state.count == 0) {

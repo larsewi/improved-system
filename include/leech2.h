@@ -108,6 +108,10 @@ extern int lch_block_create(const lch_config_t *config);
  * If @p hash is NULL the REPORTED hash is used as the starting point; if
  * REPORTED does not exist, genesis (the very beginning of the chain) is used.
  *
+ * Passing an explicit @p hash allows callers to bypass the built-in REPORTED
+ * mechanism (lch_patch_applied / lch_patch_failed) and implement their own
+ * system for tracking which blocks have been reported.
+ *
  * The buffer written to @p buf must eventually be freed with lch_patch_free().
  *
  * @param config    Valid config handle (must not be NULL).
@@ -154,6 +158,18 @@ extern int lch_patch_to_sql(const lch_config_t *config, const uint8_t *buf,
  */
 extern int lch_patch_applied(const lch_config_t *config, const uint8_t *buf,
                              size_t len);
+
+/**
+ * Mark a patch as failed.
+ *
+ * Removes the REPORTED file so that the next lch_patch_create() produces a
+ * full state patch (TRUNCATE + INSERT for all tables). This is safe to call
+ * regardless of whether a REPORTED file exists.
+ *
+ * @param config  Valid config handle (must not be NULL).
+ * @return LCH_SUCCESS on success, LCH_FAILURE on error.
+ */
+extern int lch_patch_failed(const lch_config_t *config);
 
 /**
  * Free a patch buffer without marking it as applied.

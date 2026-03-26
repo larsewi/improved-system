@@ -16,7 +16,7 @@ jobs:
         run: cargo fmt
 
       - name: Create pull request
-        uses: peter-evans/create-pull-request@v7
+        uses: peter-evans/create-pull-request@v8
         with:
           token: ${{ secrets.PAT }}
           commit-message: "Formatted Rust code"
@@ -42,7 +42,7 @@ jobs:
           fi
 
       - name: Create pull request
-        uses: peter-evans/create-pull-request@v7
+        uses: peter-evans/create-pull-request@v8
         with:
           token: ${{ secrets.PAT }}
           commit-message: "Formatted C code"
@@ -65,11 +65,11 @@ jobs:
           sudo apt-get update && sudo apt-get install -y shfmt
           FILES=$(find . -path ./target -prune -o -name '*.sh' -print)
           if [ -n "$FILES" ]; then
-            echo "$FILES" | xargs shfmt -w
+            echo "$FILES" | xargs shfmt -w -i 4
           fi
 
       - name: Create pull request
-        uses: peter-evans/create-pull-request@v7
+        uses: peter-evans/create-pull-request@v8
         with:
           token: ${{ secrets.PAT }}
           commit-message: "Formatted shell scripts"

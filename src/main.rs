@@ -72,6 +72,8 @@ enum PatchCmd {
     Sql,
     /// Mark the current patch as applied (saves head hash to REPORTED)
     Applied,
+    /// Mark the current patch as failed (removes REPORTED to force full state)
+    Failed,
 }
 
 fn work_dir(cli: &Cli) -> PathBuf {
@@ -263,6 +265,12 @@ fn cmd_patch_applied(config: &Config) -> Result<()> {
     Ok(())
 }
 
+fn cmd_patch_failed(config: &Config) -> Result<()> {
+    leech2::reported::remove(&config.work_dir)?;
+    println!("REPORTED removed; next patch will be a full state");
+    Ok(())
+}
+
 /// Print `content` to stdout, piping through a pager (e.g. `less`) when the
 /// output exceeds the terminal height. Falls back to plain `println!` when
 /// stdout is not a TTY, the terminal size is unavailable, or the pager fails
@@ -331,6 +339,9 @@ fn run(cli: Cli) -> Result<()> {
             }
             PatchCmd::Applied => {
                 cmd_patch_applied(&config)?;
+            }
+            PatchCmd::Failed => {
+                cmd_patch_failed(&config)?;
             }
         },
         Cmd::Log => {

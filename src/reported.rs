@@ -25,3 +25,9 @@ pub fn save(work_dir: &Path, hash: &str) -> Result<()> {
     log::info!("Updated reported to '{:.7}...'", hash);
     Ok(())
 }
+
+pub fn remove(work_dir: &Path) -> Result<()> {
+    storage::remove(work_dir, REPORTED_FILE)?;
+    log::info!("Removed REPORTED file");
+    Ok(())
+}

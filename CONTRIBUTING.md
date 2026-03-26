@@ -21,8 +21,8 @@ To run a single test: `cargo test <test_name>` (e.g. `cargo test test_merge_rule
 leech2 is a Rust `cdylib` that exposes a C-compatible API for tracking changes
 to CSV-backed database tables. It implements a git-like content-addressable
 block chain for change history. Changes flow through four primary operations:
-`Block::create()`, `Patch::create()`, `patch_to_sql()`, and
-`Patch::applied()`.
+`Block::create()`, `Patch::create()`, `patch_to_sql()`,
+`Patch::applied()`, and `Patch::failed()`.
 
 ### Block::create()
 
@@ -69,16 +69,21 @@ Block:
 
 `Patch::create()` consolidates multiple blocks into a single patch by walking
 the chain from `HEAD` back to a last-known hash (typically the hash stored in
-`REPORTED`, or genesis on first run). To keep memory usage low, consolidation
-proceeds in two phases: first, block hashes are collected by decoding each block
-file as a lightweight `BlockHeader` (which shares field tags with `Block` so
-prost skips the payload). Then, blocks are loaded one at a
-time in oldest-first order and their deltas are merged incrementally into
-per-table running results using 15 conflict-resolution rules (see
-[DELTA_MERGING_RULES.md](DELTA_MERGING_RULES.md)). Each block is dropped after
-its deltas are merged, so only one block's payload and the per-table running
-results are in memory at a time. Some rules handle non-conflicting scenarios
-seamlessly, while others detect unresolvable conflicts (e.g. double insert).
+`REPORTED`, or genesis on first run). Callers may also pass an explicit hash to
+bypass the built-in REPORTED mechanism (`lch_patch_applied` /
+`lch_patch_failed`) and implement their own system for tracking which blocks
+have been reported.
+
+To keep memory usage low, consolidation proceeds in two phases: first, block
+hashes are collected by decoding each block file as a lightweight `BlockHeader`
+(which shares field tags with `Block` so prost skips the payload). Then, blocks
+are loaded one at a time in oldest-first order and their deltas are merged
+incrementally into per-table running results using 15 conflict-resolution rules
+(see [DELTA_MERGING_RULES.md](DELTA_MERGING_RULES.md)). Each block is dropped
+after its deltas are merged, so only one block's payload and the per-table
+running results are in memory at a time. Some rules handle non-conflicting
+scenarios seamlessly, while others detect unresolvable conflicts (e.g. double
+insert).
 
 When the reference hash is genesis or can't be resolved (e.g. the block was
 truncated), the library skips consolidation entirely and produces a full state
@@ -148,6 +153,15 @@ this hash instead of genesis, so only new changes are included. The `REPORTED`
 hash also serves as a truncation boundary: blocks older than the last reported
 position can be safely pruned.
 
+### Patch::failed()
+
+`Patch::failed()` handles the case where a patch could not be applied to the
+target database. It removes the `REPORTED` file, which forces the next
+`Patch::create()` to start from genesis and produce a full state patch
+(TRUNCATE + INSERT for all tables). This is idempotent and safe regardless of
+the current database state — the full state patch will bring the database to the
+correct state even if a previous partial application left it inconsistent.
+
 ### Truncation
 
 After every `Block::create()`, optional truncation runs to reclaim disk space.
@@ -203,7 +217,7 @@ src/
   block.rs      Content-addressable block creation and loading
   patch.rs      Patch consolidation, per-table payload selection
   head.rs       HEAD file read/write
-  reported.rs   REPORTED file read/write (last reported patch hash)
+  reported.rs   REPORTED file read/write/remove (last reported patch hash)
   truncate.rs   History truncation (orphan, reported, max-blocks, max-age)
   storage.rs    File I/O with fs2 locking
   wire.rs       Protobuf encode/decode + zstd compression

@@ -52,6 +52,9 @@ lch patch sql
 
 # Mark the patch as applied so next patch starts from here
 lch patch applied
+
+# If SQL application fails, force full state on next patch
+lch patch failed
 ```
 
 ## Configuration
@@ -223,6 +226,8 @@ lch_sql_free(sql);
 
 if (hub_send(buf, len)) {
   lch_patch_applied(cfg, buf, len);
+} else {
+  lch_patch_failed(cfg);
 }
 lch_patch_free(buf, len);
 

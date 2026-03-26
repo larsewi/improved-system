@@ -163,6 +163,42 @@ fn test_block_chain_broken() {
     common::assert_wire_roundtrip(&config, &patch);
 }
 
+/// When the agent calls reported::remove() (simulating lch_patch_failed),
+/// the next patch should produce a full state (TRUNCATE + INSERT).
+#[test]
+fn test_patch_failed_forces_full_state() {
+    common::init_logging();
+    let tmp = tempfile::tempdir().unwrap();
+    let work_dir = tmp.path();
+    let config = setup_users(work_dir);
+
+    // Create initial data and mark as reported
+    common::write_csv(work_dir, "users.csv", "1,Alice\n");
+    let hash1 = Block::create(&config).unwrap();
+    reported::save(work_dir, &hash1).unwrap();
+
+    // Add more data
+    common::write_csv(work_dir, "users.csv", "1,Alice\n2,Bob\n");
+    let hash2 = Block::create(&config).unwrap();
+
+    // Simulate patch failure: remove REPORTED
+    reported::remove(work_dir).unwrap();
+    assert!(reported::load(work_dir).unwrap().is_none());
+
+    // Next patch from genesis should be full state
+    let patch = Patch::create(&config, GENESIS_HASH).unwrap();
+    assert_eq!(patch.head, hash2);
+    assert_eq!(patch.num_blocks, 0); // full state, no delta consolidation
+
+    let sql = sql::patch_to_sql(&config, &patch).unwrap().unwrap();
+    assert_eq!(common::count_sql(&sql, "TRUNCATE"), 1);
+    assert_eq!(common::count_sql(&sql, "INSERT INTO"), 2);
+    assert_eq!(common::count_sql(&sql, "DELETE FROM"), 0);
+    assert_eq!(common::count_sql(&sql, "UPDATE "), 0);
+
+    common::assert_wire_roundtrip(&config, &patch);
+}
+
 /// When the STATE file is deleted but the block chain is intact,
 /// delta consolidation should still succeed (STATE is only needed
 /// for the fallback path).
