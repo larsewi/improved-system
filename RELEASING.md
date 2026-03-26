@@ -52,4 +52,4 @@ If the workflow fails before creating the tag, fix the issue and re-run the
 workflow with the same version.
 
 If the workflow fails after the tag has been pushed, delete the tag before
-retrying:
+retrying.
