@@ -36,8 +36,14 @@ enum Cmd {
         #[command(subcommand)]
         command: PatchCmd,
     },
-    /// List all blocks from HEAD to genesis
+    /// Alias for `block log`
     Log,
+    /// Alias for `patch sql`
+    Sql,
+    /// Alias for `patch applied`
+    Applied,
+    /// Alias for `patch failed`
+    Failed,
 }
 
 #[derive(Subcommand)]
@@ -53,6 +59,8 @@ enum BlockCmd {
         #[arg(short)]
         n: Option<u32>,
     },
+    /// List all blocks from HEAD to genesis
+    Log,
 }
 
 #[derive(Subcommand)]
@@ -184,7 +192,7 @@ fn cmd_patch_create(
     Ok(())
 }
 
-fn cmd_log(config: &Config) -> Result<String> {
+fn cmd_block_log(config: &Config) -> Result<String> {
     let work_dir = &config.work_dir;
     let mut hash = leech2::head::load(work_dir)?;
 
@@ -324,6 +332,10 @@ fn run(cli: Cli) -> Result<()> {
                 let output = cmd_block_show(&config, reference.as_deref(), *n)?;
                 print_with_pager(&output);
             }
+            BlockCmd::Log => {
+                let output = cmd_block_log(&config)?;
+                print_with_pager(&output);
+            }
         },
         Cmd::Patch { command } => match command {
             PatchCmd::Create { reference, n } => {
@@ -345,8 +357,30 @@ fn run(cli: Cli) -> Result<()> {
             }
         },
         Cmd::Log => {
-            let output = cmd_log(&config)?;
+            eprintln!(
+                "warning: `lch log` is an alias that may change; use `lch block log` in scripts"
+            );
+            let output = cmd_block_log(&config)?;
             print_with_pager(&output);
+        }
+        Cmd::Sql => {
+            eprintln!(
+                "warning: `lch sql` is an alias that may change; use `lch patch sql` in scripts"
+            );
+            let output = cmd_patch_sql(&config)?;
+            print_with_pager(&output);
+        }
+        Cmd::Applied => {
+            eprintln!(
+                "warning: `lch applied` is an alias that may change; use `lch patch applied` in scripts"
+            );
+            cmd_patch_applied(&config)?;
+        }
+        Cmd::Failed => {
+            eprintln!(
+                "warning: `lch failed` is an alias that may change; use `lch patch failed` in scripts"
+            );
+            cmd_patch_failed(&config)?;
         }
     }
 
