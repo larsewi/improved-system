@@ -28,7 +28,7 @@
 
    The workflow will:
    - Read the version from `Cargo.toml`
-   - Build release binaries for four targets:
+   - Build release binaries for five targets:
      - Linux x86_64
      - Linux aarch64
      - macOS x86_64
