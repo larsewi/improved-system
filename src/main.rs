@@ -190,7 +190,7 @@ fn cmd_patch_create(
     Ok(())
 }
 
-fn cmd_log(config: &Config) -> Result<String> {
+fn cmd_block_log(config: &Config) -> Result<String> {
     let work_dir = &config.work_dir;
     let mut hash = leech2::head::load(work_dir)?;
 
@@ -331,7 +331,7 @@ fn run(cli: Cli) -> Result<()> {
                 print_with_pager(&output);
             }
             BlockCmd::Log => {
-                let output = cmd_log(&config)?;
+                let output = cmd_block_log(&config)?;
                 print_with_pager(&output);
             }
         },
@@ -355,7 +355,7 @@ fn run(cli: Cli) -> Result<()> {
             }
         },
         Cmd::Log => {
-            let output = cmd_log(&config)?;
+            let output = cmd_block_log(&config)?;
             print_with_pager(&output);
         }
         Cmd::Sql => {
