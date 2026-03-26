@@ -74,6 +74,15 @@ int main(int argc, char *argv[]) {
   }
 
   lch_patch_applied(config, buf, len);
+
+  ret = lch_patch_failed(config);
+  if (ret == LCH_FAILURE) {
+    fprintf(stderr, "lch_patch_failed failed\n");
+    lch_patch_free(buf, len);
+    lch_deinit(config);
+    return EXIT_FAILURE;
+  }
+
   lch_patch_free(buf, len);
 
   if (sql != NULL) {

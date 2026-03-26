@@ -156,6 +156,18 @@ extern int lch_patch_applied(const lch_config_t *config, const uint8_t *buf,
                              size_t len);
 
 /**
+ * Mark a patch as failed.
+ *
+ * Removes the REPORTED file so that the next lch_patch_create() produces a
+ * full state patch (TRUNCATE + INSERT for all tables). This is safe to call
+ * regardless of whether a REPORTED file exists.
+ *
+ * @param config  Valid config handle (must not be NULL).
+ * @return LCH_SUCCESS on success, LCH_FAILURE on error.
+ */
+extern int lch_patch_failed(const lch_config_t *config);
+
+/**
  * Free a patch buffer without marking it as applied.
  *
  * Passing NULL is a safe no-op. After this call, @p buf is invalid and must

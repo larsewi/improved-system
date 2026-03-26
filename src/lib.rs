@@ -280,6 +280,25 @@ pub unsafe extern "C" fn lch_patch_applied(
 }
 
 /// # Safety
+/// `config` must be a valid, non-null pointer returned by `lch_init`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn lch_patch_failed(config: *const config::Config) -> i32 {
+    if config.is_null() {
+        log::error!("lch_patch_failed(): Bad argument: config cannot be NULL");
+        return FAILURE;
+    }
+
+    let config = unsafe { &*config };
+
+    if let Err(e) = reported::remove(&config.work_dir) {
+        log::error!("lch_patch_failed(): Failed to remove REPORTED: {:#}", e);
+        return FAILURE;
+    }
+
+    SUCCESS
+}
+
+/// # Safety
 /// `buf` must be a valid pointer to `len` bytes, previously returned by `lch_patch_create`,
 /// or NULL (no-op).
 #[unsafe(no_mangle)]
