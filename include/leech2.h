@@ -58,7 +58,7 @@ extern void lch_log_init(lch_log_callback_t callback, void *usr_data);
  * Created by lch_init() and freed by lch_deinit(). All other API functions
  * require a valid handle obtained from lch_init().
  */
-typedef struct Config lch_config_t;
+typedef struct LchConfig lch_config_t;
 
 /**
  * Initialize the library and load configuration.
