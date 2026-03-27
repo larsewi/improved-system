@@ -5,6 +5,16 @@
 See [README.md](README.md) for build dependencies and basic build commands.
 
 To run a single test: `cargo test <test_name>` (e.g. `cargo test test_merge_rule5`).
+Prefix with `LEECH2_LOG=<level>` to enable logging (`error`, `warn`, `info`,
+`debug`, `trace`).
+
+## Formatting
+
+| File type  | Tool           | Command                  |
+| ---------- | -------------- | ------------------------ |
+| `.rs`      | `cargo fmt`    | `cargo fmt`              |
+| `.c`, `.h` | `clang-format` | `clang-format -i <file>` |
+| `.sh`      | `shfmt`        | `shfmt -w -i 4 <file>`   |
 
 ## Terminology
 
