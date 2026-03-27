@@ -82,9 +82,9 @@ extern lch_config_t *lch_init(const char *work_dir);
  * Releases all resources associated with the handle. Passing NULL is a safe
  * no-op. After this call the handle is invalid and must not be used.
  *
- * @param config  Handle previously returned by lch_init(), or NULL.
+ * @param cfg  Handle previously returned by lch_init(), or NULL.
  */
-extern void lch_deinit(lch_config_t *config);
+extern void lch_deinit(lch_config_t *cfg);
 
 /**
  * Create a new block from the current CSV data.
@@ -93,10 +93,10 @@ extern void lch_deinit(lch_config_t *config);
  * the previous state, and writes a new block together with updated STATE and
  * HEAD files. History truncation is performed afterwards.
  *
- * @param config  Valid config handle (must not be NULL).
+ * @param cfg  Valid config handle (must not be NULL).
  * @return LCH_SUCCESS on success, LCH_FAILURE on error.
  */
-extern int lch_block_create(const lch_config_t *config);
+extern int lch_block_create(const lch_config_t *cfg);
 
 /**
  * Create a patch from HEAD back to a known hash.
@@ -114,13 +114,13 @@ extern int lch_block_create(const lch_config_t *config);
  *
  * The buffer written to @p buf must eventually be freed with lch_patch_free().
  *
- * @param config    Valid config handle (must not be NULL).
+ * @param cfg       Valid config handle (must not be NULL).
  * @param hash      Last-known block hash (null-terminated string), or NULL.
  * @param[out] buf  Receives a pointer to the encoded patch buffer.
  * @param[out] len  Receives the length of the patch buffer in bytes.
  * @return LCH_SUCCESS on success, LCH_FAILURE on error.
  */
-extern int lch_patch_create(const lch_config_t *config, const char *hash,
+extern int lch_patch_create(const lch_config_t *cfg, const char *hash,
                             uint8_t **buf, size_t *len);
 
 /**
@@ -135,14 +135,14 @@ extern int lch_patch_create(const lch_config_t *config, const char *hash,
  * If the patch contains no actionable changes, @p sql is set to NULL and the
  * function returns LCH_SUCCESS.
  *
- * @param config    Valid config handle (must not be NULL).
+ * @param cfg       Valid config handle (must not be NULL).
  * @param buf       Pointer to the encoded patch (must not be NULL).
  * @param len       Length of @p buf in bytes.
  * @param[out] sql  Receives a pointer to the SQL string, or NULL if the patch
  *                  is empty. Free with lch_sql_free().
  * @return LCH_SUCCESS on success, LCH_FAILURE on error.
  */
-extern int lch_patch_to_sql(const lch_config_t *config, const uint8_t *buf,
+extern int lch_patch_to_sql(const lch_config_t *cfg, const uint8_t *buf,
                             size_t len, char **sql);
 
 /**
@@ -151,12 +151,12 @@ extern int lch_patch_to_sql(const lch_config_t *config, const uint8_t *buf,
  * Updates the REPORTED file with the patch's head hash so that future
  * truncation knows which blocks are safe to remove.
  *
- * @param config  Valid config handle (must not be NULL).
- * @param buf     Pointer to the encoded patch (must not be NULL).
- * @param len     Length of @p buf in bytes.
+ * @param cfg  Valid config handle (must not be NULL).
+ * @param buf  Pointer to the encoded patch (must not be NULL).
+ * @param len  Length of @p buf in bytes.
  * @return LCH_SUCCESS on success, LCH_FAILURE on error.
  */
-extern int lch_patch_applied(const lch_config_t *config, const uint8_t *buf,
+extern int lch_patch_applied(const lch_config_t *cfg, const uint8_t *buf,
                              size_t len);
 
 /**
@@ -166,10 +166,10 @@ extern int lch_patch_applied(const lch_config_t *config, const uint8_t *buf,
  * full state patch (TRUNCATE + INSERT for all tables). This is safe to call
  * regardless of whether a REPORTED file exists.
  *
- * @param config  Valid config handle (must not be NULL).
+ * @param cfg  Valid config handle (must not be NULL).
  * @return LCH_SUCCESS on success, LCH_FAILURE on error.
  */
-extern int lch_patch_failed(const lch_config_t *config);
+extern int lch_patch_failed(const lch_config_t *cfg);
 
 /**
  * Free a patch buffer without marking it as applied.
