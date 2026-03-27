@@ -13,7 +13,7 @@ typedef struct {
 } log_state_t;
 
 static void log_callback(lch_log_level_t level, const char *msg,
-                         void *user_data) {
+                         void *usr_data) {
   switch (level) {
   case LCH_LOG_ERROR:
     fprintf(stderr, "ERROR: %s\n", msg);
@@ -31,7 +31,7 @@ static void log_callback(lch_log_level_t level, const char *msg,
     printf("TRACE: %s\n", msg);
     break;
   }
-  log_state_t *state = (log_state_t *)user_data;
+  log_state_t *state = (log_state_t *)usr_data;
   state->count++;
 }
 

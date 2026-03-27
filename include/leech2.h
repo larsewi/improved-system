@@ -32,13 +32,13 @@ typedef enum {
 /**
  * Callback type for receiving log messages.
  *
- * @param level      Severity level of the message.
- * @param msg        Null-terminated log message string. Only valid for the
- *                   duration of the callback invocation.
- * @param user_data  Opaque pointer passed to lch_log_init().
+ * @param level     Severity level of the message.
+ * @param msg       Null-terminated log message string. Only valid for the
+ *                  duration of the callback invocation.
+ * @param usr_data  Opaque pointer passed to lch_log_init().
  */
 typedef void (*lch_log_callback_t)(lch_log_level_t level, const char *msg,
-                                   void *user_data);
+                                   void *usr_data);
 
 /**
  * Initialize logging with a callback.
@@ -47,10 +47,10 @@ typedef void (*lch_log_callback_t)(lch_log_level_t level, const char *msg,
  * Must be called before lch_init() for the callback to receive messages.
  * May be called again to replace the callback.
  *
- * @param callback   Function to receive log messages (must not be NULL).
- * @param user_data  Opaque pointer forwarded to every callback invocation.
+ * @param callback  Function to receive log messages (must not be NULL).
+ * @param usr_data  Opaque pointer forwarded to every callback invocation.
  */
-extern void lch_log_init(lch_log_callback_t callback, void *user_data);
+extern void lch_log_init(lch_log_callback_t callback, void *usr_data);
 
 /**
  * Opaque configuration handle.
