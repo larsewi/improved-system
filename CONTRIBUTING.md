@@ -5,6 +5,16 @@
 See [README.md](README.md) for build dependencies and basic build commands.
 
 To run a single test: `cargo test <test_name>` (e.g. `cargo test test_merge_rule5`).
+Prefix with `LEECH2_LOG=<level>` to enable logging (`error`, `warn`, `info`,
+`debug`, `trace`).
+
+## Formatting
+
+| File type  | Tool           | Command                  |
+| ---------- | -------------- | ------------------------ |
+| `.rs`      | `cargo fmt`    | `cargo fmt`              |
+| `.c`, `.h` | `clang-format` | `clang-format -i <file>` |
+| `.sh`      | `shfmt`        | `shfmt -w -i 4 <file>`   |
 
 ## Terminology
 
@@ -256,78 +266,6 @@ Proto definitions are in `proto/`. Code is generated at build time via
 Domain types have `From` impls to convert to/from their proto counterparts.
 All protobuf types implement `Display`, so you can print them directly to
 inspect their contents (e.g. `println!("{}", block)`, `println!("{}", patch)`).
-
-**Note:** leech2 has not been released yet, so there are no
-backwards-compatibility constraints on the proto specs. Reusing or renumbering
-wire fields is fine.
-
-## Data flow
-
-```
-CSV files
-    |
-    v
-Table::load()          Parse CSV into HashMap<primary_key, subsidiary_values>
-    |
-    v
-State::compute()       Collect all tables into a State
-    |
-    +---> [if genesis: empty payload, skip to Block]
-    |
-    +---> detect_layout_changes(prev_state, config)
-    |         |
-    |         v
-    |     Layout-changed tables marked as TableChange { delta: None }
-    |
-    +---> Delta::compute(prev_state, new_state)
-    |         |
-    |         v
-    |     Normal tables wrapped as TableChange { delta: Some(...) }
-    |
-    +---> Block { parent, timestamp, payload: map<name, TableChange> }
-    |         |
-    |         +--> SHA-1 hash --> stored as file
-    |         +--> HEAD updated
-    |
-    +--> STATE file updated
-```
-
-```
-Patch::create(last_known_hash)
-    |
-    v
-Collect block hashes: HEAD -> ... -> last_known
-    (decodes each block as BlockHeader, skipping payload)
-    |
-    v
-Load blocks one at a time oldest-first, merging deltas incrementally
-    |   (one block's payload + per-table running results in memory)
-    |
-    +-> Layout-changed tables -> full state directly (skip merge)
-    |
-    +-> Per table: Delta::merge() into running result (see DELTA_MERGING_RULES.md)
-    |         (merge failure -> fall back to state for that table)
-    v
-Per table: strip (key-only deletes, sparse updates)
-    |
-    v
-Per table: compare encoded sizes (delta vs state), pick smaller
-    |
-    v
-Patch { head, created, num_blocks, deltas: {...}, states: {...}, field_hashes: {...} }
-    |
-    v
-wire::encode_patch()  -->  protobuf + optional zstd
-    |
-    v
-sql::patch_to_sql()
-    |
-    +--> Per table: check_field_hash() (skip+warn on mismatch)
-    +--> Delta tables: DELETE...; INSERT...; UPDATE...;
-    +--> State tables: TRUNCATE...; INSERT...;
-    +--> All wrapped in: BEGIN; ... COMMIT;
-    (with injected fields: DELETE/UPDATE WHERE scoped by them, state uses DELETE WHERE instead of TRUNCATE)
-```
 
 ## Delta merging rules
 
