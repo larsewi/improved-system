@@ -12,6 +12,10 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #define LCH_SUCCESS 0
 #define LCH_FAILURE -1
 
@@ -186,5 +190,9 @@ extern void lch_patch_free(uint8_t *buf, size_t len);
  * @param sql  SQL string to free, or NULL.
  */
 extern void lch_sql_free(char *sql);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* __LEECH2_H__ */
