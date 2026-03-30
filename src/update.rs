@@ -83,9 +83,9 @@ impl Update {
     pub fn sparse_encode(&mut self) {
         let mut changed_indices = Vec::new();
         let mut sparse_new = Vec::new();
-        for (i, (old_value, new_value)) in
-            self.old_value.iter().zip(self.new_value.iter()).enumerate()
-        {
+
+        let pairs = self.old_value.iter().zip(self.new_value.iter());
+        for (i, (old_value, new_value)) in pairs.enumerate() {
             if old_value != new_value {
                 changed_indices.push(i as u32);
                 sparse_new.push(new_value.clone());
