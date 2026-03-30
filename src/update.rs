@@ -93,8 +93,16 @@ impl Update {
                 sparse_new.push(new_value.clone());
             }
         }
-        self.changed_indices = changed_indices;
+
+        // If all columns changed, sparse encoding adds index overhead
+        // without saving any values — just drop old_value and keep
+        // new_value as-is.
         self.old_value.clear();
+        if changed_indices.len() == self.new_value.len() {
+            return;
+        }
+
+        self.changed_indices = changed_indices;
         self.new_value = sparse_new;
     }
 }
@@ -181,7 +189,8 @@ mod tests {
     fn test_sparse_encode_all_changed() {
         let mut update = make_update(&["k"], &[], &["a", "b"], &["x", "y"]);
         update.sparse_encode();
-        assert_eq!(update.changed_indices, vec![0, 1]);
+        assert!(update.changed_indices.is_empty());
+        assert!(update.old_value.is_empty());
         assert_eq!(update.new_value, vec!["x", "y"]);
     }
 
