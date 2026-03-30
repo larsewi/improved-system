@@ -9,6 +9,12 @@ pub fn compute_hash(data: &[u8]) -> String {
 }
 
 /// Indent all lines after the first by prepending `prefix`.
+///
+/// The `Display` trait has no way to pass an indentation level, so nested
+/// types format themselves starting at column 0. The parent calls this
+/// function on the child's output to shift subsequent lines to the correct
+/// depth. The first line is left unchanged because the parent already
+/// positions it.
 pub fn indent(text: &str, prefix: &str) -> String {
     text.replace('\n', &format!("\n{}", prefix))
 }
