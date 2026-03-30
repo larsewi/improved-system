@@ -61,18 +61,21 @@ impl Update {
         let changed: HashSet<u32> = self.changed_indices.iter().copied().collect();
         let mut new_iter = self.new_value.iter();
         let mut old_iter = self.old_value.iter();
-        (0..num_subsidiary as u32)
-            .map(|i| {
-                if changed.contains(&i) {
-                    let new = new_iter.next().map(|s| s.as_str()).unwrap_or("<missing>");
-                    let old =
-                        has_old.then(|| old_iter.next().map(|s| s.as_str()).unwrap_or("<missing>"));
-                    format_update_column(new, old)
-                } else {
-                    "_".to_string()
-                }
-            })
-            .collect()
+        let mut columns = Vec::with_capacity(num_subsidiary);
+        for i in 0..num_subsidiary as u32 {
+            if !changed.contains(&i) {
+                columns.push("_".to_string());
+                continue;
+            }
+            let new = new_iter.next().map_or("<missing>", String::as_str);
+            let old = if has_old {
+                Some(old_iter.next().map_or("<missing>", String::as_str))
+            } else {
+                None
+            };
+            columns.push(format_update_column(new, old));
+        }
+        columns
     }
 
     /// Sparse-encode an update: keep only the indices and values of columns that
