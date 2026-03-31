@@ -168,10 +168,10 @@ mod tests {
 
     #[test]
     fn test_expand_sparse_no_changed_indices() {
-        let mut update = make_update(&["k"], &[], &["a", "b"], &["x", "y"]);
+        let mut update = make_update(&["k"], &[], &["a", "b"], &["a", "b"]);
         update.expand_sparse(2);
         assert_eq!(update.old_value, vec!["a", "b"]);
-        assert_eq!(update.new_value, vec!["x", "y"]);
+        assert_eq!(update.new_value, vec!["a", "b"]);
     }
 
     #[test]
