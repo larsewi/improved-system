@@ -22,6 +22,11 @@ fn strip_lock_affixes(name: &str) -> Option<&str> {
     name.strip_prefix(".")?.strip_suffix(".lock")
 }
 
+/// Returns `true` if `s` is a 40-character hexadecimal string (i.e. a SHA-1 hash).
+fn is_hex_hash(s: &str) -> bool {
+    s.len() == 40 && s.chars().all(|c| c.is_ascii_hexdigit())
+}
+
 /// Returns `(block_hashes, stale_lock_files)` by scanning the work directory.
 /// Block hashes are 40-hex-char filenames. Stale lock files are `.<40-hex>.lock`
 /// files whose corresponding block is not on disk.
@@ -35,12 +40,9 @@ fn scan_work_dir(work_dir: &Path) -> Result<(HashSet<String>, Vec<String>)> {
         let Some(name) = name.to_str() else {
             continue;
         };
-        if name.len() == 40 && name.chars().all(|c| c.is_ascii_hexdigit()) {
+        if is_hex_hash(name) {
             blocks.insert(name.to_string());
-        } else if let Some(base) = strip_lock_affixes(name)
-            && base.len() == 40
-            && base.chars().all(|c| c.is_ascii_hexdigit())
-        {
+        } else if strip_lock_affixes(name).is_some_and(is_hex_hash) {
             lock_files.push(name.to_string());
         }
     }
