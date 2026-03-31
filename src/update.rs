@@ -206,6 +206,9 @@ mod tests {
         assert_eq!(columns, vec!["a", "x", "c"]);
     }
 
+    // Note: sparse_encode() always clears old_value, so leech2 itself never
+    // produces this combination. The proto wire format allows it, however, so
+    // we verify that the display logic handles it correctly.
     #[test]
     fn test_format_sparse_columns_with_old() {
         let update = make_update(&["k"], &[1], &["b"], &["x"]);
