@@ -67,16 +67,13 @@ fn walk_chain(work_dir: &Path, head_hash: &str) -> (Vec<ChainEntry>, HashSet<Str
 
     let mut current_hash = head_hash.to_string();
     while current_hash != GENESIS_HASH {
-        let header = match Block::load_header(work_dir, &current_hash) {
-            Ok(header) => header,
-            Err(_) => {
-                // Block was previously truncated — end of reachable chain
-                log::trace!(
-                    "Block '{:.7}...' not found (previously truncated), stopping chain walk",
-                    current_hash
-                );
-                break;
-            }
+        let Ok(header) = Block::load_header(work_dir, &current_hash) else {
+            // Reached end of chain
+            log::trace!(
+                "Block '{:.7}...' not found (previously truncated), stopping chain walk",
+                current_hash
+            );
+            break;
         };
         let created = header.created.and_then(|ts| SystemTime::try_from(ts).ok());
         reachable.insert(current_hash.clone());
