@@ -75,11 +75,24 @@ fn walk_chain(work_dir: &Path, head_hash: &str) -> (Vec<ChainEntry>, HashSet<Str
             );
             break;
         };
-        let created = header.created.and_then(|ts| SystemTime::try_from(ts).ok());
+        let Some(created) = header.created else {
+            log::warn!(
+                "Block '{:.7}...' has no timestamp, stopping chain walk",
+                current_hash
+            );
+            break;
+        };
+        let Ok(created) = SystemTime::try_from(created) else {
+            log::warn!(
+                "Block '{:.7}...' has invalid timestamp, stopping chain walk",
+                current_hash
+            );
+            break;
+        };
         reachable.insert(current_hash.clone());
         chain.push(ChainEntry {
             hash: current_hash,
-            created,
+            created: Some(created),
         });
         current_hash = header.parent;
     }
