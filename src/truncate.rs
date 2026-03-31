@@ -16,6 +16,12 @@ struct ChainEntry {
     created: Option<SystemTime>,
 }
 
+/// Strips the leading `.` and trailing `.lock` from a lock file name,
+/// returning the inner block hash (e.g. `".abc123.lock"` → `"abc123"`).
+fn strip_lock_affixes(name: &str) -> Option<&str> {
+    name.strip_prefix(".")?.strip_suffix(".lock")
+}
+
 /// Returns `(block_hashes, stale_lock_files)` by scanning the work directory.
 /// Block hashes are 40-hex-char filenames. Stale lock files are `.<40-hex>.lock`
 /// files whose corresponding block is not on disk.
@@ -31,8 +37,7 @@ fn scan_work_dir(work_dir: &Path) -> Result<(HashSet<String>, Vec<String>)> {
         };
         if name.len() == 40 && name.chars().all(|c| c.is_ascii_hexdigit()) {
             blocks.insert(name.to_string());
-        } else if let Some(base) = name.strip_suffix(".lock")
-            && let Some(base) = base.strip_prefix(".")
+        } else if let Some(base) = strip_lock_affixes(name)
             && base.len() == 40
             && base.chars().all(|c| c.is_ascii_hexdigit())
         {
@@ -42,7 +47,7 @@ fn scan_work_dir(work_dir: &Path) -> Result<(HashSet<String>, Vec<String>)> {
 
     // Keep only lock files whose block is not on disk
     lock_files.retain(|name| {
-        let base = name.strip_suffix(".lock").and_then(|s| s.strip_prefix("."));
+        let base = strip_lock_affixes(name);
         match base {
             Some(base) => !blocks.contains(base),
             None => false,
