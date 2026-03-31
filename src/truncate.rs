@@ -13,7 +13,7 @@ use crate::utils::GENESIS_HASH;
 
 struct ChainEntry {
     hash: String,
-    created: Option<SystemTime>,
+    created: SystemTime,
 }
 
 /// Strips the leading `.` and trailing `.lock` from a lock file name,
@@ -92,7 +92,7 @@ fn walk_chain(work_dir: &Path, head_hash: &str) -> (Vec<ChainEntry>, HashSet<Str
         reachable.insert(current_hash.clone());
         chain.push(ChainEntry {
             hash: current_hash,
-            created: Some(created),
+            created,
         });
         current_hash = header.parent;
     }
@@ -159,9 +159,10 @@ fn truncate_chain(config: &Config, chain: &[ChainEntry]) -> Result<()> {
             continue; // Never delete HEAD
         }
 
-        let should_remove = reported_pos.is_some_and(|pos| i > pos)
-            || max_blocks.is_some_and(|max| i >= max)
-            || max_age_cutoff.is_some_and(|cutoff| entry.created.is_some_and(|c| c < cutoff));
+        let past_reported = reported_pos.is_some_and(|pos| i > pos);
+        let past_max_blocks = max_blocks.is_some_and(|max| i >= max);
+        let past_max_age = max_age_cutoff.is_some_and(|cutoff| entry.created < cutoff);
+        let should_remove = past_reported || past_max_blocks || past_max_age;
 
         if should_remove {
             log::info!("Truncating block '{:.7}...'", entry.hash);
