@@ -120,7 +120,7 @@ impl From<(Vec<String>, (Vec<String>, Vec<String>))> for Update {
 ///
 /// When `old` is provided and differs from `new`, shows `"old -> new"`.
 /// When `old` equals `new`, shows `"_"` (unchanged).
-/// When there is no old value, shows just `new`.
+/// When there is no old value (i.e. due to sparse encoding), shows just `new`.
 fn format_update_column(new: &str, old: Option<&str>) -> String {
     match old {
         Some(old) if old != new => format!("{} -> {}", old, new),
