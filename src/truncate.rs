@@ -59,15 +59,13 @@ fn scan_work_dir(work_dir: &Path) -> Result<(HashSet<String>, Vec<String>)> {
     Ok((blocks, lock_files))
 }
 
-pub fn run(config: &Config) -> Result<()> {
-    let work_dir = &config.work_dir;
-    let head_hash = head::load(work_dir)?;
-
-    // Walk chain from HEAD → GENESIS, building ordered list and reachable set together
+/// Walk the block chain from HEAD back towards GENESIS, returning an ordered
+/// list of chain entries and the set of reachable block hashes.
+fn walk_chain(work_dir: &Path, head_hash: &str) -> (Vec<ChainEntry>, HashSet<String>) {
     let mut chain = Vec::new();
     let mut reachable = HashSet::new();
 
-    let mut current_hash = head_hash.clone();
+    let mut current_hash = head_hash.to_string();
     while current_hash != GENESIS_HASH {
         let header = match Block::load_header(work_dir, &current_hash) {
             Ok(header) => header,
@@ -92,9 +90,15 @@ pub fn run(config: &Config) -> Result<()> {
         current_hash = header.parent;
     }
 
-    // Orphan removal: delete block files on disk not in reachable set,
-    // and stale lock files whose block no longer exists
+    (chain, reachable)
+}
+
+/// Remove orphaned blocks (not reachable from HEAD) and stale lock files
+/// (whose corresponding block no longer exists on disk).
+fn remove_orphans(config: &Config, reachable: &HashSet<String>) -> Result<()> {
+    let work_dir = &config.work_dir;
     let (on_disk, stale_locks) = scan_work_dir(work_dir)?;
+
     if config.truncate.remove_orphans {
         for hash in &on_disk {
             if !reachable.contains(hash) {
@@ -109,11 +113,14 @@ pub fn run(config: &Config) -> Result<()> {
         let _ = std::fs::remove_file(work_dir.join(lock_file));
     }
 
-    if chain.is_empty() {
-        return Ok(());
-    }
+    Ok(())
+}
 
-    // Precompute rule parameters
+/// Truncate blocks from the chain according to the configured rules
+/// (max_blocks, max_age, truncate_reported). Never deletes HEAD.
+fn truncate_chain(config: &Config, chain: &[ChainEntry]) -> Result<()> {
+    let work_dir = &config.work_dir;
+
     let reported_pos = if config.truncate.truncate_reported {
         match reported::load(work_dir)? {
             Some(ref hash) => chain
@@ -131,7 +138,6 @@ pub fn run(config: &Config) -> Result<()> {
         None => None,
     };
 
-    // Single pass: check all removal rules for each block
     let mut removed = 0u32;
     for (i, entry) in chain.iter().enumerate() {
         if i == 0 {
@@ -152,6 +158,17 @@ pub fn run(config: &Config) -> Result<()> {
     if removed > 0 {
         log::info!("Truncated {} block(s)", removed);
     }
+
+    Ok(())
+}
+
+pub fn run(config: &Config) -> Result<()> {
+    let work_dir = &config.work_dir;
+    let head_hash = head::load(work_dir)?;
+
+    let (chain, reachable) = walk_chain(work_dir, &head_hash);
+    remove_orphans(config, &reachable)?;
+    truncate_chain(config, &chain)?;
 
     Ok(())
 }
