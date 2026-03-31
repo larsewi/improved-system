@@ -119,7 +119,13 @@ fn remove_orphans(config: &Config, reachable: &HashSet<String>) -> Result<()> {
 
     for lock_file in &stale_locks {
         log::info!("Removing stale lock file '{}'", lock_file);
-        let _ = std::fs::remove_file(work_dir.join(lock_file));
+        if let Err(error) = std::fs::remove_file(work_dir.join(lock_file)) {
+            log::warn!(
+                "Failed to remove stale lock file '{}': {}",
+                lock_file,
+                error
+            );
+        }
     }
 
     Ok(())
