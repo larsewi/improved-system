@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use anyhow::{Context, Result, bail};
 
-use crate::config::Config;
+use crate::config::{Config, FieldConfig};
 use crate::proto::patch::Patch;
 
 /// Controls how a CSV field value is formatted as a SQL literal.
@@ -40,6 +40,20 @@ struct FieldMeta {
     null: Option<String>,
 }
 
+impl TryFrom<&FieldConfig> for FieldMeta {
+    type Error = anyhow::Error;
+
+    fn try_from(field_config: &FieldConfig) -> Result<Self> {
+        let sql_type = SqlType::from_config(&field_config.sql_type)
+            .with_context(|| format!("field '{}'", field_config.name))?;
+        Ok(FieldMeta {
+            name: field_config.name.clone(),
+            sql_type,
+            null: field_config.null.clone(),
+        })
+    }
+}
+
 /// Schema information for a single table, resolved from config.
 struct TableSchema {
     /// All fields in order: primary keys first, then subsidiary.
@@ -56,9 +70,6 @@ impl TableSchema {
     /// so that callers can split the `fields` vec at `num_primary_keys` (see
     /// `primary_key_fields()` and `subsidiary_fields()`).
     ///
-    /// Fields that appear in the config get their declared type and null
-    /// sentinel; fields referenced only by the primary key (not explicitly
-    /// configured) default to `TEXT` with no null sentinel.
     fn resolve(config: &Config, table_name: &str) -> Result<Self> {
         let table_config = config
             .tables
@@ -66,36 +77,22 @@ impl TableSchema {
             .with_context(|| format!("table '{}' not found in config", table_name))?;
 
         // Build a name→config lookup so we can resolve type/null for each field.
-        let field_configs: std::collections::HashMap<&str, &crate::config::FieldConfig> =
-            table_config
-                .fields
-                .iter()
-                .map(|field| (field.name.as_str(), field))
-                .collect();
+        let field_configs: std::collections::HashMap<&str, &FieldConfig> = table_config
+            .fields
+            .iter()
+            .map(|field| (field.name.as_str(), field))
+            .collect();
 
         let primary_key = table_config.primary_key();
         let field_names = table_config.field_names();
 
-        let resolve_field = |name: &str| -> Result<FieldMeta> {
-            let field_config = field_configs.get(name);
-            let type_str = field_config.map_or("TEXT", |fc| fc.sql_type.as_str());
-            let null = field_config.and_then(|fc| fc.null.clone());
-            let sql_type =
-                SqlType::from_config(type_str).with_context(|| format!("field '{}'", name))?;
-            Ok(FieldMeta {
-                name: name.to_string(),
-                sql_type,
-                null,
-            })
-        };
-
         let mut fields = Vec::new();
         for name in &primary_key {
-            fields.push(resolve_field(name)?);
+            fields.push(field_configs[name.as_str()].try_into()?);
         }
         for name in &field_names {
             if !primary_key.contains(name) {
-                fields.push(resolve_field(name)?);
+                fields.push(field_configs[name.as_str()].try_into()?);
             }
         }
 
@@ -539,7 +536,7 @@ mod tests {
         let table_config = crate::config::TableConfig {
             source: "test.csv".to_string(),
             header: false,
-            fields: vec![crate::config::FieldConfig {
+            fields: vec![FieldConfig {
                 name: "id".to_string(),
                 sql_type: "TEXT".to_string(),
                 primary_key: true,
@@ -589,7 +586,7 @@ mod tests {
         let table_config = crate::config::TableConfig {
             source: "test.csv".to_string(),
             header: false,
-            fields: vec![crate::config::FieldConfig {
+            fields: vec![FieldConfig {
                 name: "id".to_string(),
                 sql_type: "TEXT".to_string(),
                 primary_key: true,
@@ -636,7 +633,7 @@ mod tests {
         let table_config = crate::config::TableConfig {
             source: "test.csv".to_string(),
             header: false,
-            fields: vec![crate::config::FieldConfig {
+            fields: vec![FieldConfig {
                 name: "id".to_string(),
                 sql_type: "TEXT".to_string(),
                 primary_key: true,
