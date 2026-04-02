@@ -391,35 +391,29 @@ fn state_table_to_sql(
     Ok(())
 }
 
-/// Check whether a table's field hash in the patch matches the hub's config.
-/// Returns true if the hash matches, false (with a warning) if it doesn't.
+/// Verify that a table's field hash in the patch matches the hub's config.
 fn check_field_hash(
     config: &Config,
     table_name: &str,
     field_hashes: &HashMap<String, String>,
-) -> bool {
-    let Some(agent_hash) = field_hashes.get(table_name) else {
-        log::warn!(
-            "Table '{}': missing field hash in patch, skipping",
-            table_name
-        );
-        return false;
-    };
-    let Some(table_config) = config.tables.get(table_name) else {
-        log::warn!("Table '{}': not found in config, skipping", table_name);
-        return false;
-    };
+) -> Result<()> {
+    let agent_hash = field_hashes
+        .get(table_name)
+        .with_context(|| format!("table '{}': missing field hash in patch", table_name))?;
+    let table_config = config
+        .tables
+        .get(table_name)
+        .with_context(|| format!("table '{}': not found in config", table_name))?;
     let hub_hash = table_config.field_hash();
     if agent_hash != &hub_hash {
-        log::warn!(
-            "Table '{}': field hash mismatch (agent={}, hub={}), skipping",
+        bail!(
+            "table '{}': field hash mismatch (agent={}, hub={})",
             table_name,
             agent_hash,
             hub_hash
         );
-        return false;
     }
-    true
+    Ok(())
 }
 
 /// Convert a decoded patch to SQL statements.
@@ -441,16 +435,12 @@ pub fn patch_to_sql(config: &Config, patch: &ProtoPatch) -> Result<Option<String
     let mut sql = String::from("BEGIN;\n");
 
     for (table_name, delta) in &patch.deltas {
-        if !check_field_hash(config, table_name, &patch.field_hashes) {
-            continue;
-        }
+        check_field_hash(config, table_name, &patch.field_hashes)?;
         delta_to_sql(config, table_name, delta, &injected_fields, &mut sql)?;
     }
 
     for (table_name, table) in &patch.states {
-        if !check_field_hash(config, table_name, &patch.field_hashes) {
-            continue;
-        }
+        check_field_hash(config, table_name, &patch.field_hashes)?;
         state_table_to_sql(config, table_name, table, &injected_fields, &mut sql)?;
     }
 
@@ -557,7 +547,7 @@ mod tests {
     }
 
     #[test]
-    fn test_patch_to_sql_skips_mismatched_field_hash() {
+    fn test_patch_to_sql_rejects_mismatched_field_hash() {
         let table_config = crate::config::TableConfig {
             source: "test.csv".to_string(),
             header: false,
@@ -599,15 +589,13 @@ mod tests {
             field_hashes: HashMap::from([("test_table".to_string(), "wrong_hash".to_string())]),
         };
 
-        // Should succeed but produce no statements for the mismatched table
-        let result = patch_to_sql(&config, &patch).unwrap().unwrap();
-        assert!(!result.contains("INSERT INTO"));
-        assert!(result.contains("BEGIN;"));
-        assert!(result.contains("COMMIT;"));
+        let err = patch_to_sql(&config, &patch).unwrap_err();
+        let msg = format!("{:#}", err);
+        assert!(msg.contains("field hash mismatch"), "got: {}", msg);
     }
 
     #[test]
-    fn test_patch_to_sql_skips_missing_field_hash() {
+    fn test_patch_to_sql_rejects_missing_field_hash() {
         let table_config = crate::config::TableConfig {
             source: "test.csv".to_string(),
             header: false,
@@ -649,8 +637,9 @@ mod tests {
             field_hashes: HashMap::new(),
         };
 
-        let result = patch_to_sql(&config, &patch).unwrap().unwrap();
-        assert!(!result.contains("INSERT INTO"));
+        let err = patch_to_sql(&config, &patch).unwrap_err();
+        let msg = format!("{:#}", err);
+        assert!(msg.contains("missing field hash"), "got: {}", msg);
     }
 
     #[test]
