@@ -63,12 +63,9 @@ struct TableSchema {
 }
 
 impl TableSchema {
-    /// Resolve a table's schema from config, producing an ordered field list.
-    ///
-    /// The config stores fields in an unordered flat list. This function
-    /// partitions them into primary-key fields followed by subsidiary fields
-    /// so that callers can split the `fields` vec at `num_primary_keys` (see
-    /// `primary_key_fields()` and `subsidiary_fields()`).
+    /// Resolve a table's schema from config, partitioning fields into
+    /// primary-key fields followed by subsidiary fields while preserving
+    /// declaration order within each group.
     ///
     fn resolve(config: &Config, table_name: &str) -> Result<Self> {
         let table_config = config
