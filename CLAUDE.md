@@ -23,6 +23,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Use `anyhow` for error handling: `anyhow::Result<T>` for return types, `bail!()` for early error returns, `.context()` / `.with_context()` to add context to errors. Do not use `Box<dyn std::error::Error>`.
 - Prefer imports over fully-qualified paths. Add `use` items for types and functions that are used in a file rather than repeating `crate::module::Type` or `std::collections::HashMap` inline.
 - Avoid abbreviations in variable names. Prefer descriptive names (e.g., `table_config` over `tc`).
+- Place `#[cfg(test)] mod tests` at the bottom of each file, after all production code.
 - Prefer `From`/`Into` (or `TryFrom`/`TryInto` for fallible conversions) over manual construction when converting between types, especially domain-to-proto conversions.
 - After implementing new features, look for opportunities to refactor the code to improve readability and reduce duplication.
 - Never include a "Test plan" section in pull request descriptions unless specificly asked.
