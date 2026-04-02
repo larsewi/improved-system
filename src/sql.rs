@@ -272,16 +272,12 @@ fn primary_key_where_clause(
     schema: &TableSchema,
     injected_fields: &[InjectedField],
 ) -> Result<String> {
-    let mut where_parts: Vec<String> = key
-        .iter()
-        .zip(schema.primary_key_fields())
-        .map(|(value, field)| {
-            let literal =
-                format_value(value, field).with_context(|| format!("field '{}'", field.name))?;
-            Ok(format!("{} = {}", quote_identifier(&field.name), literal))
-        })
-        .collect::<Result<Vec<_>>>()?;
-
+    let mut where_parts = Vec::new();
+    for (value, field) in key.iter().zip(schema.primary_key_fields()) {
+        let literal =
+            format_value(value, field).with_context(|| format!("field '{}'", field.name))?;
+        where_parts.push(format!("{} = {}", quote_identifier(&field.name), literal));
+    }
     for injected in injected_fields {
         where_parts.push(injected.where_clause()?);
     }
@@ -320,16 +316,13 @@ fn delta_to_sql(
             update.changed_indices.clone()
         };
 
-        let set_parts: Vec<String> = indices
-            .iter()
-            .zip(update.new_value.iter())
-            .map(|(index, value)| {
-                let field = &subsidiary_fields[*index as usize];
-                let literal = format_value(value, field)
-                    .with_context(|| format!("field '{}'", field.name))?;
-                Ok(format!("{} = {}", quote_identifier(&field.name), literal))
-            })
-            .collect::<Result<Vec<_>>>()?;
+        let mut set_parts = Vec::new();
+        for (index, value) in indices.iter().zip(update.new_value.iter()) {
+            let field = &subsidiary_fields[*index as usize];
+            let literal =
+                format_value(value, field).with_context(|| format!("field '{}'", field.name))?;
+            set_parts.push(format!("{} = {}", quote_identifier(&field.name), literal));
+        }
 
         let where_clause = primary_key_where_clause(&update.key, &schema, injected_fields)?;
 
@@ -358,10 +351,10 @@ fn state_table_to_sql(
     if injected_fields.is_empty() {
         out.push_str(&format!("TRUNCATE {};\n", quoted_table));
     } else {
-        let conditions: Vec<String> = injected_fields
-            .iter()
-            .map(|injected| injected.where_clause())
-            .collect::<Result<Vec<_>>>()?;
+        let mut conditions = Vec::new();
+        for injected in injected_fields {
+            conditions.push(injected.where_clause()?);
+        }
         out.push_str(&format!(
             "DELETE FROM {} WHERE {};\n",
             quoted_table,
@@ -416,11 +409,10 @@ pub fn patch_to_sql(config: &Config, patch: &ProtoPatch) -> Result<Option<String
         return Ok(None);
     }
 
-    let injected_fields: Vec<InjectedField> = patch
-        .injected_fields
-        .iter()
-        .map(InjectedField::try_from)
-        .collect::<Result<Vec<_>>>()?;
+    let mut injected_fields = Vec::new();
+    for proto_field in &patch.injected_fields {
+        injected_fields.push(InjectedField::try_from(proto_field)?);
+    }
 
     let mut sql = String::from("BEGIN;\n");
 
