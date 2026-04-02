@@ -87,13 +87,19 @@ impl TableSchema {
 
         // Primary-key fields first.
         for name in &primary_key_names {
-            fields.push(field_config_by_name[name.as_str()].try_into()?);
+            let field_meta = field_config_by_name[name.as_str()]
+                .try_into()
+                .with_context(|| format!("table '{}'", table_name))?;
+            fields.push(field_meta);
         }
 
         // Then subsidiary fields.
         for name in &all_field_names {
             if !primary_key_names.contains(name) {
-                fields.push(field_config_by_name[name.as_str()].try_into()?);
+                let field_meta = field_config_by_name[name.as_str()]
+                    .try_into()
+                    .with_context(|| format!("table '{}'", table_name))?;
+                fields.push(field_meta);
             }
         }
 
