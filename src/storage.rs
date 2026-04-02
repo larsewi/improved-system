@@ -101,6 +101,39 @@ pub fn load(work_dir: &Path, name: &str) -> Result<Option<Vec<u8>>> {
     Ok(Some(data))
 }
 
+pub fn resolve_hash_prefix(work_dir: &Path, prefix: &str) -> Result<String> {
+    let mut matches: Vec<String> = Vec::new();
+
+    if GENESIS_HASH.starts_with(prefix) {
+        matches.push(GENESIS_HASH.to_string());
+    }
+
+    for entry in std::fs::read_dir(work_dir)? {
+        let entry = entry?;
+        let name = entry.file_name();
+        let Some(name) = name.to_str() else {
+            continue;
+        };
+        if name.starts_with(prefix)
+            && name.len() == 40
+            && name.chars().all(|c| c.is_ascii_hexdigit())
+        {
+            matches.push(name.to_string());
+        }
+    }
+
+    match matches.as_slice() {
+        [] => bail!("no block found matching prefix '{}'", prefix),
+        [single] => Ok(single.clone()),
+        [first, second, ..] => bail!(
+            "ambiguous hash prefix '{}': matches {} and {}",
+            prefix,
+            first,
+            second
+        ),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -165,37 +198,64 @@ mod tests {
         let result = acquire_lock(Path::new("/nonexistent/path"), "foo", true);
         assert!(result.is_err());
     }
-}
 
-pub fn resolve_hash_prefix(work_dir: &Path, prefix: &str) -> Result<String> {
-    let mut matches: Vec<String> = Vec::new();
+    #[test]
+    fn test_resolve_hash_prefix_exact_match() {
+        let dir = tempdir().unwrap();
+        let hash = "abcdef1234567890abcdef1234567890abcdef12";
+        File::create(dir.path().join(hash)).unwrap();
 
-    if GENESIS_HASH.starts_with(prefix) {
-        matches.push(GENESIS_HASH.to_string());
+        let result = resolve_hash_prefix(dir.path(), "abcdef").unwrap();
+        assert_eq!(result, hash);
     }
 
-    for entry in std::fs::read_dir(work_dir)? {
-        let entry = entry?;
-        let name = entry.file_name();
-        let Some(name) = name.to_str() else {
-            continue;
-        };
-        if name.starts_with(prefix)
-            && name.len() == 40
-            && name.chars().all(|c| c.is_ascii_hexdigit())
-        {
-            matches.push(name.to_string());
-        }
+    #[test]
+    fn test_resolve_hash_prefix_full_hash() {
+        let dir = tempdir().unwrap();
+        let hash = "abcdef1234567890abcdef1234567890abcdef12";
+        File::create(dir.path().join(hash)).unwrap();
+
+        let result = resolve_hash_prefix(dir.path(), hash).unwrap();
+        assert_eq!(result, hash);
     }
 
-    match matches.as_slice() {
-        [] => bail!("no block found matching prefix '{}'", prefix),
-        [single] => Ok(single.clone()),
-        [first, second, ..] => bail!(
-            "ambiguous hash prefix '{}': matches {} and {}",
-            prefix,
-            first,
-            second
-        ),
+    #[test]
+    fn test_resolve_hash_prefix_no_match() {
+        let dir = tempdir().unwrap();
+        let hash = "abcdef1234567890abcdef1234567890abcdef12";
+        File::create(dir.path().join(hash)).unwrap();
+
+        let result = resolve_hash_prefix(dir.path(), "ffffff");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_resolve_hash_prefix_ambiguous() {
+        let dir = tempdir().unwrap();
+        File::create(dir.path().join("abcdef1234567890abcdef1234567890abcdef12")).unwrap();
+        File::create(dir.path().join("abcdef5678901234567890abcdef1234567890ab")).unwrap();
+
+        let result = resolve_hash_prefix(dir.path(), "abcdef");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_resolve_hash_prefix_genesis_hash() {
+        let dir = tempdir().unwrap();
+
+        let result = resolve_hash_prefix(dir.path(), "00000").unwrap();
+        assert_eq!(result, GENESIS_HASH);
+    }
+
+    #[test]
+    fn test_resolve_hash_prefix_ignores_non_hash_files() {
+        let dir = tempdir().unwrap();
+        // Too short to be a hash
+        File::create(dir.path().join("abcdef")).unwrap();
+        // Right length but contains non-hex characters
+        File::create(dir.path().join("abcdef1234567890abcdef1234567890abcdefGH")).unwrap();
+
+        let result = resolve_hash_prefix(dir.path(), "abcdef");
+        assert!(result.is_err());
     }
 }
