@@ -70,7 +70,6 @@ impl TableSchema {
     /// Resolve a table's schema from config, partitioning fields into
     /// primary-key fields followed by subsidiary fields while preserving
     /// declaration order within each group.
-    ///
     fn resolve(config: &Config, table_name: &str) -> Result<Self> {
         let table_config = config
             .tables
