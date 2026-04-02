@@ -5,7 +5,11 @@ use anyhow::{Context, Result, bail};
 use crate::config::Config;
 use crate::proto::patch::Patch;
 
-/// SQL type mapping for converting CSV byte values to SQL literals.
+/// Controls how a CSV field value is formatted as a SQL literal.
+///
+/// These are not database column types — they determine quoting and
+/// validation when embedding a value into a SQL string (e.g. `Text`
+/// wraps in single quotes, `Number` validates and emits unquoted).
 #[derive(Debug, Clone, PartialEq)]
 pub enum SqlType {
     Text,
