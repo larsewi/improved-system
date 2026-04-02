@@ -284,45 +284,6 @@ fn emit_inserts(
     Ok(())
 }
 
-/// Build a WHERE clause from primary key values and injected fields.
-fn primary_key_where_clause(
-    key: &[String],
-    schema: &TableSchema,
-    injected_fields: &[InjectedField],
-) -> Result<String> {
-    let mut where_parts = Vec::new();
-    for (value, field) in key.iter().zip(schema.primary_key_fields()) {
-        let literal =
-            format_value(value, field).with_context(|| format!("field '{}'", field.name))?;
-        where_parts.push(format!("{} = {}", quote_identifier(&field.name), literal));
-    }
-    for injected in injected_fields {
-        where_parts.push(injected.where_clause()?);
-    }
-
-    Ok(where_parts.join(" AND "))
-}
-
-/// Generate SQL statements for a delta (DELETE/INSERT/UPDATE).
-fn delta_to_sql(
-    config: &Config,
-    table_name: &str,
-    delta: &ProtoDelta,
-    injected_fields: &[InjectedField],
-    out: &mut String,
-) -> Result<()> {
-    let schema = TableSchema::resolve(config, table_name)?;
-    let table = quote_identifier(table_name);
-
-    emit_deletes(&delta.deletes, &schema, injected_fields, &table, out)?;
-    emit_inserts(&delta.inserts, &schema, injected_fields, &table, out)?;
-
-    // UPDATEs
-    emit_updates(&delta.updates, &schema, injected_fields, &table, out)?;
-
-    Ok(())
-}
-
 /// Generate UPDATE statements for a list of updates.
 fn emit_updates(
     updates: &[crate::update::Update],
@@ -359,6 +320,43 @@ fn emit_updates(
             where_clause
         ));
     }
+
+    Ok(())
+}
+
+/// Build a WHERE clause from primary key values and injected fields.
+fn primary_key_where_clause(
+    key: &[String],
+    schema: &TableSchema,
+    injected_fields: &[InjectedField],
+) -> Result<String> {
+    let mut where_parts = Vec::new();
+    for (value, field) in key.iter().zip(schema.primary_key_fields()) {
+        let literal =
+            format_value(value, field).with_context(|| format!("field '{}'", field.name))?;
+        where_parts.push(format!("{} = {}", quote_identifier(&field.name), literal));
+    }
+    for injected in injected_fields {
+        where_parts.push(injected.where_clause()?);
+    }
+
+    Ok(where_parts.join(" AND "))
+}
+
+/// Generate SQL statements for a delta (DELETE/INSERT/UPDATE).
+fn delta_to_sql(
+    config: &Config,
+    table_name: &str,
+    delta: &ProtoDelta,
+    injected_fields: &[InjectedField],
+    out: &mut String,
+) -> Result<()> {
+    let schema = TableSchema::resolve(config, table_name)?;
+    let table = quote_identifier(table_name);
+
+    emit_deletes(&delta.deletes, &schema, injected_fields, &table, out)?;
+    emit_inserts(&delta.inserts, &schema, injected_fields, &table, out)?;
+    emit_updates(&delta.updates, &schema, injected_fields, &table, out)?;
 
     Ok(())
 }
