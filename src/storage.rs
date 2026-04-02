@@ -101,6 +101,72 @@ pub fn load(work_dir: &Path, name: &str) -> Result<Option<Vec<u8>>> {
     Ok(Some(data))
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use fs2::FileExt;
+    use tempfile::tempdir;
+
+    #[test]
+    fn test_acquire_lock_creates_lock_file() {
+        let dir = tempdir().unwrap();
+        let _lock = acquire_lock(dir.path(), "foo", true).unwrap();
+        assert!(dir.path().join(".foo.lock").exists());
+    }
+
+    #[test]
+    fn test_shared_locks_do_not_block_each_other() {
+        let dir = tempdir().unwrap();
+        let _lock1 = acquire_lock(dir.path(), "foo", false).unwrap();
+        let _lock2 = acquire_lock(dir.path(), "foo", false).unwrap();
+    }
+
+    #[test]
+    fn test_exclusive_lock_blocks_exclusive_lock() {
+        let dir = tempdir().unwrap();
+        let _lock = acquire_lock(dir.path(), "foo", true).unwrap();
+
+        let lock_path = dir.path().join(".foo.lock");
+        let file = File::create(&lock_path).unwrap();
+        assert!(file.try_lock_exclusive().is_err());
+    }
+
+    #[test]
+    fn test_exclusive_lock_blocks_shared_lock() {
+        let dir = tempdir().unwrap();
+        let _lock = acquire_lock(dir.path(), "foo", true).unwrap();
+
+        let lock_path = dir.path().join(".foo.lock");
+        let file = File::create(&lock_path).unwrap();
+        assert!(file.try_lock_shared().is_err());
+    }
+
+    #[test]
+    fn test_shared_lock_blocks_exclusive_lock() {
+        let dir = tempdir().unwrap();
+        let _lock = acquire_lock(dir.path(), "foo", false).unwrap();
+
+        let lock_path = dir.path().join(".foo.lock");
+        let file = File::create(&lock_path).unwrap();
+        assert!(file.try_lock_exclusive().is_err());
+    }
+
+    #[test]
+    fn test_lock_released_on_drop() {
+        let dir = tempdir().unwrap();
+        {
+            let _lock = acquire_lock(dir.path(), "foo", true).unwrap();
+        }
+        let _lock = acquire_lock(dir.path(), "foo", true).unwrap();
+    }
+
+    #[test]
+    fn test_acquire_lock_invalid_dir() {
+        let result = acquire_lock(Path::new("/nonexistent/path"), "foo", true);
+        assert!(result.is_err());
+    }
+}
+
 pub fn resolve_hash_prefix(work_dir: &Path, prefix: &str) -> Result<String> {
     let mut matches: Vec<String> = Vec::new();
 
