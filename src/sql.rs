@@ -3,7 +3,11 @@ use std::collections::HashMap;
 use anyhow::{Context, Result, bail};
 
 use crate::config::{Config, FieldConfig};
-use crate::proto::patch::Patch;
+use crate::entry::Entry;
+use crate::proto::delta::Delta as ProtoDelta;
+use crate::proto::injected::Field as ProtoInjectedField;
+use crate::proto::patch::Patch as ProtoPatch;
+use crate::proto::table::Table as ProtoTable;
 
 /// Controls how a CSV field value is formatted as a SQL literal.
 ///
@@ -126,7 +130,7 @@ struct InjectedField {
 }
 
 impl InjectedField {
-    fn resolve(proto: &crate::proto::injected::Field) -> Result<Self> {
+    fn resolve(proto: &ProtoInjectedField) -> Result<Self> {
         let sql_type = SqlType::from_config(&proto.sql_type)
             .with_context(|| format!("injected field '{}'", proto.name))?;
         Ok(InjectedField {
@@ -222,7 +226,7 @@ fn format_row(key: &[String], value: &[String], schema: &TableSchema) -> Result<
 
 /// Generate INSERT statements for a list of entries.
 fn emit_inserts(
-    entries: &[crate::entry::Entry],
+    entries: &[Entry],
     schema: &TableSchema,
     injected_fields: &[InjectedField],
     quoted_table: &str,
@@ -286,7 +290,7 @@ fn primary_key_where_clause(
 fn delta_to_sql(
     config: &Config,
     table_name: &str,
-    delta: &crate::proto::delta::Delta,
+    delta: &ProtoDelta,
     injected_fields: &[InjectedField],
     out: &mut String,
 ) -> Result<()> {
@@ -341,7 +345,7 @@ fn delta_to_sql(
 fn state_table_to_sql(
     config: &Config,
     table_name: &str,
-    table: &crate::proto::table::Table,
+    table: &ProtoTable,
     injected_fields: &[InjectedField],
     out: &mut String,
 ) -> Result<()> {
@@ -401,7 +405,7 @@ fn check_field_hash(
 /// Convert a decoded patch to SQL statements.
 ///
 /// Returns a SQL string wrapped in BEGIN/COMMIT.
-pub fn patch_to_sql(config: &Config, patch: &Patch) -> Result<Option<String>> {
+pub fn patch_to_sql(config: &Config, patch: &ProtoPatch) -> Result<Option<String>> {
     log::info!("Converting patch to SQL: {}", patch);
 
     if patch.deltas.is_empty() && patch.states.is_empty() {
@@ -560,16 +564,16 @@ mod tests {
             filters: crate::config::FilterConfig::default(),
         };
 
-        let patch = Patch {
+        let patch = ProtoPatch {
             head: "abc123".to_string(),
             created: None,
             injected_fields: Vec::new(),
             num_blocks: 1,
             deltas: HashMap::from([(
                 "test_table".to_string(),
-                crate::proto::delta::Delta {
+                ProtoDelta {
                     column_names: vec!["id".to_string()],
-                    inserts: vec![crate::proto::entry::Entry {
+                    inserts: vec![Entry {
                         key: vec!["1".to_string()],
                         value: vec![],
                     }],
@@ -610,16 +614,16 @@ mod tests {
             filters: crate::config::FilterConfig::default(),
         };
 
-        let patch = Patch {
+        let patch = ProtoPatch {
             head: "abc123".to_string(),
             created: None,
             injected_fields: Vec::new(),
             num_blocks: 1,
             deltas: HashMap::from([(
                 "test_table".to_string(),
-                crate::proto::delta::Delta {
+                ProtoDelta {
                     column_names: vec!["id".to_string()],
-                    inserts: vec![crate::proto::entry::Entry {
+                    inserts: vec![Entry {
                         key: vec!["1".to_string()],
                         value: vec![],
                     }],
@@ -658,16 +662,16 @@ mod tests {
             filters: crate::config::FilterConfig::default(),
         };
 
-        let patch = Patch {
+        let patch = ProtoPatch {
             head: "abc123".to_string(),
             created: None,
             injected_fields: Vec::new(),
             num_blocks: 1,
             deltas: HashMap::from([(
                 "test_table".to_string(),
-                crate::proto::delta::Delta {
+                ProtoDelta {
                     column_names: vec!["id".to_string()],
-                    inserts: vec![crate::proto::entry::Entry {
+                    inserts: vec![Entry {
                         key: vec!["1".to_string()],
                         value: vec![],
                     }],
