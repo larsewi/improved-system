@@ -128,8 +128,10 @@ struct InjectedField {
     value: String,
 }
 
-impl InjectedField {
-    fn resolve(proto: &ProtoInjectedField) -> Result<Self> {
+impl TryFrom<&ProtoInjectedField> for InjectedField {
+    type Error = anyhow::Error;
+
+    fn try_from(proto: &ProtoInjectedField) -> Result<Self> {
         let sql_type = SqlType::from_config(&proto.sql_type)
             .with_context(|| format!("injected field '{}'", proto.name))?;
         Ok(InjectedField {
@@ -138,7 +140,9 @@ impl InjectedField {
             value: proto.value.clone(),
         })
     }
+}
 
+impl InjectedField {
     fn where_clause(&self) -> Result<String> {
         let literal = quote_literal(&self.value, &self.sql_type)
             .with_context(|| format!("injected field '{}' value", self.name))?;
@@ -415,7 +419,7 @@ pub fn patch_to_sql(config: &Config, patch: &ProtoPatch) -> Result<Option<String
     let injected_fields: Vec<InjectedField> = patch
         .injected_fields
         .iter()
-        .map(InjectedField::resolve)
+        .map(InjectedField::try_from)
         .collect::<Result<Vec<_>>>()?;
 
     let mut sql = String::from("BEGIN;\n");
