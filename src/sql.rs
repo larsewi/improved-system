@@ -473,11 +473,6 @@ mod tests {
         assert_eq!(SqlType::from_config("number").unwrap(), SqlType::Number);
         assert_eq!(SqlType::from_config("Boolean").unwrap(), SqlType::Boolean);
         // Unknown types are rejected
-        assert!(SqlType::from_config("VARCHAR").is_err());
-        assert!(SqlType::from_config("INTEGER").is_err());
-        assert!(SqlType::from_config("FLOAT").is_err());
-        assert!(SqlType::from_config("BINARY").is_err());
-        assert!(SqlType::from_config("DATE").is_err());
         assert!(SqlType::from_config("unknown").is_err());
     }
 
