@@ -114,8 +114,7 @@ fn walk_back(work_dir: &std::path::Path, num_blocks: u32) -> Result<String> {
                 num_blocks
             );
         }
-        let block = Block::load(work_dir, &hash)?;
-        hash = block.parent;
+        hash = Block::load_parent_hash(work_dir, &hash)?;
     }
     Ok(hash)
 }
