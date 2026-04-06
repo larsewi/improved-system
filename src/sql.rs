@@ -263,16 +263,15 @@ fn emit_inserts(
         .map(|field| quote_identifier(&field.name))
         .collect();
 
-    for (index, injected) in injected_fields.iter().enumerate() {
-        column_parts.insert(index, injected.quoted_column());
-    }
+    let injected_columns: Vec<String> = injected_fields.iter().map(|f| f.quoted_column()).collect();
+    column_parts.splice(..0, injected_columns);
     let columns = column_parts.join(", ");
 
     for entry in entries {
         let mut literals = format_row(&entry.key, &entry.value, schema)?;
-        for (index, injected) in injected_fields.iter().enumerate() {
-            literals.insert(index, injected.quoted_value()?);
-        }
+        let injected_values: Result<Vec<String>> =
+            injected_fields.iter().map(|f| f.quoted_value()).collect();
+        literals.splice(..0, injected_values?);
         out.push_str(&format!(
             "INSERT INTO {} ({}) VALUES ({});\n",
             quoted_table,
