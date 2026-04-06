@@ -236,7 +236,8 @@ fn emit_deletes(
     out: &mut String,
 ) -> Result<()> {
     for entry in entries {
-        let where_clause = primary_key_where_clause(&entry.key, schema, injected_fields)?;
+        let where_clause = primary_key_where_clause(&entry.key, schema, injected_fields)
+            .with_context(|| format!("key {:?}", entry.key))?;
         out.push_str(&format!(
             "DELETE FROM {} WHERE {};\n",
             quoted_table, where_clause
@@ -268,7 +269,8 @@ fn emit_inserts(
     let columns = column_parts.join(", ");
 
     for entry in entries {
-        let mut literals = format_row(&entry.key, &entry.value, schema)?;
+        let mut literals = format_row(&entry.key, &entry.value, schema)
+            .with_context(|| format!("key {:?}", entry.key))?;
         let injected_values: Result<Vec<String>> =
             injected_fields.iter().map(|f| f.quoted_value()).collect();
         literals.splice(..0, injected_values?);
@@ -283,6 +285,40 @@ fn emit_inserts(
     Ok(())
 }
 
+/// Format a single UPDATE statement.
+fn format_update(
+    update: &crate::update::Update,
+    subsidiary_fields: &[FieldMeta],
+    schema: &TableSchema,
+    injected_fields: &[InjectedField],
+    quoted_table: &str,
+) -> Result<String> {
+    // Sparse updates list changed column indices explicitly; full
+    // updates (empty changed_indices) include all subsidiary columns.
+    let indices: Vec<u32> = if update.changed_indices.is_empty() {
+        (0..subsidiary_fields.len() as u32).collect()
+    } else {
+        update.changed_indices.clone()
+    };
+
+    let mut set_parts = Vec::new();
+    for (index, value) in indices.iter().zip(update.new_value.iter()) {
+        let field = &subsidiary_fields[*index as usize];
+        let literal =
+            format_value(value, field).with_context(|| format!("field '{}'", field.name))?;
+        set_parts.push(format!("{} = {}", quote_identifier(&field.name), literal));
+    }
+
+    let where_clause = primary_key_where_clause(&update.key, schema, injected_fields)?;
+
+    Ok(format!(
+        "UPDATE {} SET {} WHERE {};\n",
+        quoted_table,
+        set_parts.join(", "),
+        where_clause
+    ))
+}
+
 /// Generate UPDATE statements for a list of updates.
 fn emit_updates(
     updates: &[crate::update::Update],
@@ -294,30 +330,15 @@ fn emit_updates(
     let subsidiary_fields = schema.subsidiary_fields();
 
     for update in updates {
-        // Sparse updates list changed column indices explicitly; full
-        // updates (empty changed_indices) include all subsidiary columns.
-        let indices: Vec<u32> = if update.changed_indices.is_empty() {
-            (0..subsidiary_fields.len() as u32).collect()
-        } else {
-            update.changed_indices.clone()
-        };
-
-        let mut set_parts = Vec::new();
-        for (index, value) in indices.iter().zip(update.new_value.iter()) {
-            let field = &subsidiary_fields[*index as usize];
-            let literal =
-                format_value(value, field).with_context(|| format!("field '{}'", field.name))?;
-            set_parts.push(format!("{} = {}", quote_identifier(&field.name), literal));
-        }
-
-        let where_clause = primary_key_where_clause(&update.key, schema, injected_fields)?;
-
-        out.push_str(&format!(
-            "UPDATE {} SET {} WHERE {};\n",
+        let stmt = format_update(
+            update,
+            subsidiary_fields,
+            schema,
+            injected_fields,
             quoted_table,
-            set_parts.join(", "),
-            where_clause
-        ));
+        )
+        .with_context(|| format!("key {:?}", update.key))?;
+        out.push_str(&stmt);
     }
 
     Ok(())
@@ -353,9 +374,12 @@ fn delta_to_sql(
     let schema = TableSchema::resolve(config, table_name)?;
     let table = quote_identifier(table_name);
 
-    emit_deletes(&delta.deletes, &schema, injected_fields, &table, out)?;
-    emit_inserts(&delta.inserts, &schema, injected_fields, &table, out)?;
-    emit_updates(&delta.updates, &schema, injected_fields, &table, out)?;
+    emit_deletes(&delta.deletes, &schema, injected_fields, &table, out)
+        .with_context(|| format!("table '{table_name}'"))?;
+    emit_inserts(&delta.inserts, &schema, injected_fields, &table, out)
+        .with_context(|| format!("table '{table_name}'"))?;
+    emit_updates(&delta.updates, &schema, injected_fields, &table, out)
+        .with_context(|| format!("table '{table_name}'"))?;
 
     Ok(())
 }
@@ -385,7 +409,8 @@ fn state_table_to_sql(
         ));
     }
 
-    emit_inserts(&table.entries, &schema, injected_fields, &quoted_table, out)?;
+    emit_inserts(&table.entries, &schema, injected_fields, &quoted_table, out)
+        .with_context(|| format!("table '{table_name}'"))?;
 
     Ok(())
 }
