@@ -80,15 +80,15 @@ fn collect_block_hashes(
     head: &str,
     last_known: &str,
 ) -> Result<(Option<Timestamp>, Vec<String>)> {
-    let head_header = Block::load_header(work_dir, head)?;
-    let created = head_header.created;
+    let block = Block::load_header(work_dir, head)?;
+    let created = block.created;
 
     if head.starts_with(last_known) {
         return Ok((created, Vec::new()));
     }
 
     let mut hashes = vec![head.to_string()];
-    let mut parent = head_header.parent;
+    let mut parent = block.parent;
 
     while parent != GENESIS_HASH && parent != last_known {
         hashes.push(parent.clone());
