@@ -33,16 +33,6 @@ impl From<ProtoState> for State {
     }
 }
 
-impl From<State> for HashMap<String, ProtoTable> {
-    fn from(state: State) -> Self {
-        state
-            .tables
-            .into_iter()
-            .map(|(name, table)| (name, ProtoTable::from(table)))
-            .collect()
-    }
-}
-
 impl From<State> for ProtoState {
     fn from(state: State) -> Self {
         let tables = state
@@ -64,7 +54,7 @@ impl fmt::Display for ProtoState {
     }
 }
 
-impl State {
+impl ProtoState {
     pub fn load(work_dir: &Path) -> Result<Option<Self>> {
         let Some(data) = storage::load(work_dir, STATE_FILE)? else {
             log::info!("No previous state found");
@@ -77,8 +67,16 @@ impl State {
             proto_state.tables.len()
         );
         log::trace!("{}", proto_state);
-        let state = State::from(proto_state);
-        Ok(Some(state))
+        Ok(Some(proto_state))
+    }
+}
+
+impl State {
+    pub fn load(work_dir: &Path) -> Result<Option<Self>> {
+        let Some(proto) = ProtoState::load(work_dir)? else {
+            return Ok(None);
+        };
+        Ok(Some(State::from(proto)))
     }
 
     pub fn compute(config: &Config) -> Result<Self> {

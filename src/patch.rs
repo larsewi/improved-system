@@ -14,8 +14,8 @@ use crate::delta::Delta;
 use crate::head;
 use crate::proto::delta::Delta as ProtoDelta;
 use crate::proto::injected::Field;
+use crate::proto::state::State as ProtoState;
 use crate::proto::table::Table as ProtoTable;
-use crate::state;
 use crate::utils;
 use crate::utils::GENESIS_HASH;
 
@@ -189,8 +189,10 @@ fn try_consolidate(work_dir: &Path, head: &str, last_known: &str) -> Result<Cons
     }
 
     // Load state for per-table size comparison and fallback.
-    let state = state::State::load(work_dir)?;
-    let state_tables: HashMap<String, ProtoTable> = state.map(|s| s.into()).unwrap_or_default();
+    let state_tables = match ProtoState::load(work_dir)? {
+        Some(state) => state.tables,
+        None => HashMap::new(),
+    };
 
     let mut result_deltas = HashMap::new();
     let mut result_states = HashMap::new();
@@ -243,15 +245,14 @@ fn full_state_patch(
     let created = Block::load(work_dir, head)
         .ok()
         .and_then(|block| block.created);
-    let state =
-        state::State::load(work_dir)?.context("no STATE file found for full state patch")?;
+    let state = ProtoState::load(work_dir)?.context("no STATE file found for full state patch")?;
     let patch = Patch {
         head: head.to_string(),
         created,
         injected_fields,
         num_blocks: 0,
         deltas: HashMap::new(),
-        states: state.into(),
+        states: state.tables,
         field_hashes,
     };
     log::trace!("Built patch:\n{}", patch);
