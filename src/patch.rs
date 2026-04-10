@@ -70,14 +70,25 @@ impl fmt::Display for Patch {
     }
 }
 
-/// Walk the chain from `head` back to (but not including) `last_known`,
-/// collecting only the block hashes. Uses `Block::load_parent_hash` which
-/// decodes only the block header, avoiding the heavier full-payload parse.
-/// Returns hashes in chain order (newest-first); callers that need
-/// oldest-first should reverse.
-fn collect_block_hashes(work_dir: &Path, head: &str, last_known: &str) -> Result<Vec<String>> {
+/// Load the head block header and walk the chain back to (but not including)
+/// `last_known`, collecting block hashes. Only the block header is decoded
+/// per block, avoiding the heavier full-payload parse. Returns the head
+/// block's timestamp and the hashes in newest-first order. If `head` matches
+/// `last_known`, returns an empty hash list.
+fn collect_block_hashes(
+    work_dir: &Path,
+    head: &str,
+    last_known: &str,
+) -> Result<(Option<Timestamp>, Vec<String>)> {
+    let block = Block::load_header(work_dir, head)?;
+    let created = block.created;
+
+    if head.starts_with(last_known) {
+        return Ok((created, Vec::new()));
+    }
+
     let mut hashes = vec![head.to_string()];
-    let mut parent = Block::load_parent_hash(work_dir, head)?;
+    let mut parent = block.parent;
 
     while parent != GENESIS_HASH && parent != last_known {
         hashes.push(parent.clone());
@@ -88,7 +99,7 @@ fn collect_block_hashes(work_dir: &Path, head: &str, last_known: &str) -> Result
         bail!("block starting with '{}' not found in chain", last_known);
     }
 
-    Ok(hashes)
+    Ok((created, hashes))
 }
 
 /// Merge a single block's deltas into per-table running results. The block is
@@ -152,18 +163,13 @@ type ConsolidateResult = (
 );
 
 fn try_consolidate(work_dir: &Path, head: &str, last_known: &str) -> Result<ConsolidateResult> {
-    let head_block = Block::load(work_dir, head)?;
-    let created = head_block.created;
+    let (created, block_hashes) = collect_block_hashes(work_dir, head, last_known)?;
 
-    if head.starts_with(last_known) {
+    if block_hashes.is_empty() {
         return Ok((created, 0, HashMap::new(), HashMap::new()));
     }
 
-    // Collect block hashes by walking the chain newest-to-oldest. Only the
-    // block header is decoded per block (not the full payload).
-    let mut block_hashes = collect_block_hashes(work_dir, head, last_known)?;
     let num_blocks = block_hashes.len() as u32;
-    block_hashes.reverse();
 
     // Load blocks one at a time oldest-first, merging deltas incrementally.
     // Only one block's payload and the per-table running results are in
@@ -171,7 +177,7 @@ fn try_consolidate(work_dir: &Path, head: &str, last_known: &str) -> Result<Cons
     let mut merged_deltas: HashMap<String, Delta> = HashMap::new();
     let mut skipped_tables: HashSet<String> = HashSet::new();
 
-    for (index, hash) in block_hashes.iter().enumerate() {
+    for (index, hash) in block_hashes.iter().rev().enumerate() {
         log::trace!(
             "Merging block {}/{}: '{:.7}...'",
             index + 1,
