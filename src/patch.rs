@@ -107,7 +107,13 @@ fn merge_block_deltas(
             continue;
         }
 
+        // A missing delta means the table's field layout changed between
+        // blocks; skip further merging and fall back to full state.
         let Some(proto_delta) = payload.delta else {
+            log::warn!(
+                "Layout changed for table '{}', falling back to full state",
+                table_name
+            );
             merged_deltas.remove(&table_name);
             skipped_tables.insert(table_name);
             continue;
