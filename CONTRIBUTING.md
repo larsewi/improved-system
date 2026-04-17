@@ -238,6 +238,7 @@ src/
 proto/          Protobuf definitions (compiled at build time by prost-build)
 include/        C header (leech2.h)
 leech2.pc.in    pkg-config template (version and libdir filled in by build.rs)
+man/            Man page templates (*.in, version and date filled in by build.rs)
 tests/          Acceptance tests
 ```
 
