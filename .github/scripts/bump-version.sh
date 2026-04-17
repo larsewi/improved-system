@@ -44,7 +44,10 @@ LAST_COMMIT_DATE=$(git log -1 --format=%cs)
 replace_first_line() {
     local file="$1"
     local new_line="$2"
-    { echo "$new_line"; tail -n +2 "$file"; } >"${file}.tmp"
+    {
+        echo "$new_line"
+        tail -n +2 "$file"
+    } >"${file}.tmp"
     mv "${file}.tmp" "$file"
 }
 replace_first_line man/lch.1 ".TH LCH 1 \"${LAST_COMMIT_DATE}\" \"leech2 ${NEW_VERSION}\" \"User Commands\""
