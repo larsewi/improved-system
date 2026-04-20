@@ -27,6 +27,7 @@ jobs:
 
             Please review the changes before merging.
           delete-branch: true
+          reviewers: larsewi
 
   c:
     runs-on: ubuntu-latest
@@ -53,6 +54,7 @@ jobs:
 
             Please review the changes before merging.
           delete-branch: true
+          reviewers: larsewi
 
   shell:
     runs-on: ubuntu-latest
@@ -80,6 +82,7 @@ jobs:
 
             Please review the changes before merging.
           delete-branch: true
+          reviewers: larsewi
 
   markdown:
     runs-on: ubuntu-latest
@@ -102,3 +105,4 @@ jobs:
 
             Please review the changes before merging.
           delete-branch: true
+          reviewers: larsewi
