@@ -169,6 +169,10 @@ regex = "DEPRECATED"         # unanchored — matches any substring
 tables = ["staging_orders"]  # only apply to specific tables (default: all)
 field = "region"
 regex = "^test$"
+
+[[filters.exclude]]
+field = "serial"
+regex = '^\d{6}$'            # TOML literal string — no escaping needed
 ```
 
 - `max-field-length`: Optional. Any record where any field value exceeds this
@@ -180,6 +184,10 @@ regex = "^test$"
 - `tables`: Optional list of table names the rule applies to. When omitted, the
   rule applies to all tables. If the named field doesn't exist in a table, the
   rule is silently skipped.
+
+**Escaping regex patterns:** In JSON, backslashes in a regex must be
+doubled: `"\\d+"` means `\d+`. In TOML, use single-quoted literal strings
+to write regexes verbatim: `'\d+'`.
 
 Filtering happens before state computation. When a previously-included record
 starts matching a filter (e.g., a status field changes to an excluded value), it
