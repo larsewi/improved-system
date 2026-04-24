@@ -224,15 +224,20 @@ characters.
 entries define exclusion rules.
 Each rule specifies a
 .B field
-name and one or both of:
+name and a
+.BR regex :
 .TP
-.BI equals " = \(dqvalue\(dq"
-Drop records where the field exactly matches the value.
-.TP
-.BI contains " = \(dqvalue\(dq"
-Drop records where the field contains the value as a substring.
+.BI regex " = \(dqpattern\(dq"
+Drop records where the field value matches the regular expression. Patterns
+are unanchored by default; use
+.B ^
+and
+.B $
+for exact matches. Syntax follows the Rust
+.B regex
+crate.
 .PP
-When both are set, either matching is sufficient to drop the record. An optional
+An optional
 .B tables
 list restricts the rule to specific tables; when omitted, the rule applies to
 all tables. If the named field does not exist in a table, the rule is silently

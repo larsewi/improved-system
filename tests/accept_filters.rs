@@ -47,7 +47,7 @@ fields = [
 }
 
 #[test]
-fn test_filter_exclude_equals() {
+fn test_filter_exclude_anchored_regex() {
     common::init_logging();
     let tmp = tempfile::tempdir().unwrap();
     let work_dir = tmp.path();
@@ -58,7 +58,7 @@ fn test_filter_exclude_equals() {
         r#"
 [[filters.exclude]]
 field = "status"
-equals = "inactive"
+regex = "^inactive$"
 
 [tables.users]
 source = "users.csv"
@@ -92,7 +92,7 @@ fields = [
 }
 
 #[test]
-fn test_filter_exclude_contains() {
+fn test_filter_exclude_unanchored_regex() {
     common::init_logging();
     let tmp = tempfile::tempdir().unwrap();
     let work_dir = tmp.path();
@@ -103,7 +103,7 @@ fn test_filter_exclude_contains() {
         r#"
 [[filters.exclude]]
 field = "description"
-contains = "DEPRECATED"
+regex = "DEPRECATED"
 
 [tables.items]
 source = "items.csv"
@@ -148,7 +148,7 @@ fn test_filter_exclude_scoped_to_table() {
 [[filters.exclude]]
 tables = ["users"]
 field = "status"
-equals = "inactive"
+regex = "^inactive$"
 
 [tables.users]
 source = "users.csv"
@@ -193,7 +193,7 @@ fn test_filter_produces_delete_when_record_starts_matching() {
         r#"
 [[filters.exclude]]
 field = "status"
-equals = "inactive"
+regex = "^inactive$"
 
 [tables.users]
 source = "users.csv"
@@ -232,7 +232,7 @@ fn test_filter_produces_insert_when_record_stops_matching() {
         r#"
 [[filters.exclude]]
 field = "status"
-equals = "inactive"
+regex = "^inactive$"
 
 [tables.users]
 source = "users.csv"

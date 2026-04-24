@@ -159,23 +159,24 @@ max-field-length = 1024      # drop records where a field exceeds this length
 
 [[filters.exclude]]
 field = "status"             # field name to check
-equals = "inactive"          # records matching value are dropped
+regex = "^inactive$"         # records whose field matches the regex are dropped
 
 [[filters.exclude]]
 field = "description"
-contains = "DEPRECATED"      # records containing value are dropped
+regex = "DEPRECATED"         # unanchored — matches any substring
 
 [[filters.exclude]]
 tables = ["staging_orders"]  # only apply to specific tables (default: all)
 field = "region"
-equals = "test"
+regex = "^test$"
 ```
 
 - `max-field-length`: Optional. Any record where any field value exceeds this
   character length is dropped.
 - `[[filters.exclude]]`: Optional list of exclusion rules. Each rule specifies a
-  `field` and one or both of `equals` (exact match) and `contains` (substring
-  match). When both are set, either matching is sufficient to drop the record.
+  `field` and a `regex`. Records whose field value matches the regex are
+  dropped. Patterns are unanchored by default — use `^` and `$` for exact
+  matches. Syntax follows the Rust [`regex`](https://docs.rs/regex/) crate.
 - `tables`: Optional list of table names the rule applies to. When omitted, the
   rule applies to all tables. If the named field doesn't exist in a table, the
   rule is silently skipped.
