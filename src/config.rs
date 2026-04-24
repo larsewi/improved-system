@@ -1,10 +1,19 @@
-use serde::Deserialize;
+use regex::Regex;
+use serde::{Deserialize, Deserializer};
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use anyhow::{Context, Result, bail};
+
+fn deserialize_regex<'de, D>(deserializer: D) -> Result<Regex, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let pattern = String::deserialize(deserializer)?;
+    Regex::new(&pattern).map_err(serde::de::Error::custom)
+}
 
 enum ConfigFormat {
     Toml,
@@ -74,8 +83,8 @@ pub struct ExcludeFilter {
     #[serde(default)]
     pub tables: Vec<String>,
     pub field: String,
-    pub equals: Option<String>,
-    pub contains: Option<String>,
+    #[serde(deserialize_with = "deserialize_regex")]
+    pub regex: Regex,
 }
 
 impl ExcludeFilter {
@@ -83,22 +92,6 @@ impl ExcludeFilter {
     /// An empty `table` list means the rule applies to all tables.
     fn applies_to(&self, table_name: &str) -> bool {
         self.tables.is_empty() || self.tables.iter().any(|name| name == table_name)
-    }
-
-    /// Returns true if `value` matches this exclusion rule.
-    /// When both `equals` and `contains` are set, either matching is sufficient.
-    fn matches(&self, value: &str) -> bool {
-        if let Some(ref expected) = self.equals
-            && value == expected
-        {
-            return true;
-        }
-        if let Some(ref substring) = self.contains
-            && value.contains(substring.as_str())
-        {
-            return true;
-        }
-        false
     }
 }
 
@@ -135,7 +128,7 @@ impl FilterConfig {
                 continue;
             }
             if let Some(position) = field_names.iter().position(|name| name == &exclude.field)
-                && exclude.matches(values[position])
+                && exclude.regex.is_match(values[position])
             {
                 return Some(format!("field '{}' matches exclude rule", exclude.field));
             }
@@ -549,17 +542,11 @@ mod tests {
         assert_ne!(config_a.field_hash(), config_b.field_hash());
     }
 
-    fn make_exclude(
-        tables: Vec<&str>,
-        field: &str,
-        equals: Option<&str>,
-        contains: Option<&str>,
-    ) -> ExcludeFilter {
+    fn make_exclude(tables: Vec<&str>, field: &str, regex: &str) -> ExcludeFilter {
         ExcludeFilter {
             tables: tables.into_iter().map(|s| s.to_string()).collect(),
             field: field.to_string(),
-            equals: equals.map(|s| s.to_string()),
-            contains: contains.map(|s| s.to_string()),
+            regex: Regex::new(regex).unwrap(),
         }
     }
 
@@ -584,10 +571,10 @@ mod tests {
     }
 
     #[test]
-    fn test_should_filter_exclude_equals() {
+    fn test_should_filter_exclude_anchored_regex() {
         let filter = FilterConfig {
             max_field_length: None,
-            exclude: vec![make_exclude(vec![], "status", Some("inactive"), None)],
+            exclude: vec![make_exclude(vec![], "status", "^inactive$")],
         };
         let fields = vec!["id".to_string(), "status".to_string()];
 
@@ -601,13 +588,19 @@ mod tests {
                 .should_filter("t", &fields, &["2", "inactive"])
                 .is_some()
         );
+        // Anchored pattern does not match substrings
+        assert!(
+            filter
+                .should_filter("t", &fields, &["3", "inactive-user"])
+                .is_none()
+        );
     }
 
     #[test]
-    fn test_should_filter_exclude_contains() {
+    fn test_should_filter_exclude_unanchored_regex() {
         let filter = FilterConfig {
             max_field_length: None,
-            exclude: vec![make_exclude(vec![], "desc", None, Some("DEPRECATED"))],
+            exclude: vec![make_exclude(vec![], "desc", "DEPRECATED")],
         };
         let fields = vec!["id".to_string(), "desc".to_string()];
 
@@ -624,34 +617,26 @@ mod tests {
     }
 
     #[test]
-    fn test_should_filter_exclude_equals_and_contains() {
+    fn test_should_filter_exclude_alternation_regex() {
         let filter = FilterConfig {
             max_field_length: None,
-            exclude: vec![make_exclude(
-                vec![],
-                "status",
-                Some("inactive"),
-                Some("act"),
-            )],
+            exclude: vec![make_exclude(vec![], "status", "^(inactive|archived)$")],
         };
         let fields = vec!["id".to_string(), "status".to_string()];
 
-        // "inactive" matches equals
         assert!(
             filter
                 .should_filter("t", &fields, &["1", "inactive"])
                 .is_some()
         );
-        // "active" matches contains
         assert!(
             filter
-                .should_filter("t", &fields, &["2", "active"])
+                .should_filter("t", &fields, &["2", "archived"])
                 .is_some()
         );
-        // "disabled" matches neither
         assert!(
             filter
-                .should_filter("t", &fields, &["3", "disabled"])
+                .should_filter("t", &fields, &["3", "active"])
                 .is_none()
         );
     }
@@ -662,7 +647,7 @@ mod tests {
     fn test_should_filter_exclude_skipped_when_field_not_in_table() {
         let filter = FilterConfig {
             max_field_length: None,
-            exclude: vec![make_exclude(vec![], "nonexistent", Some("value"), None)],
+            exclude: vec![make_exclude(vec![], "nonexistent", "^value$")],
         };
         let fields = vec!["id".to_string(), "name".to_string()];
 
@@ -677,12 +662,7 @@ mod tests {
     fn test_should_filter_exclude_table_scoped() {
         let filter = FilterConfig {
             max_field_length: None,
-            exclude: vec![make_exclude(
-                vec!["users"],
-                "status",
-                Some("inactive"),
-                None,
-            )],
+            exclude: vec![make_exclude(vec!["users"], "status", "^inactive$")],
         };
         let fields = vec!["id".to_string(), "status".to_string()];
 
@@ -707,8 +687,7 @@ mod tests {
             exclude: vec![make_exclude(
                 vec!["users", "admins"],
                 "status",
-                Some("inactive"),
-                None,
+                "^inactive$",
             )],
         };
         let fields = vec!["id".to_string(), "status".to_string()];
@@ -727,6 +706,26 @@ mod tests {
             filter
                 .should_filter("orders", &fields, &["1", "inactive"])
                 .is_none()
+        );
+    }
+
+    #[test]
+    fn test_invalid_regex_fails_to_load() {
+        let toml_input = r#"
+[[filters.exclude]]
+field = "status"
+regex = "["
+
+[tables.users]
+source = "users.csv"
+fields = [
+    { name = "id", type = "NUMBER", primary-key = true },
+]
+"#;
+        let err = toml::from_str::<Config>(toml_input).unwrap_err();
+        assert!(
+            err.to_string().contains("regex"),
+            "expected error to mention 'regex', got: {err}"
         );
     }
 
