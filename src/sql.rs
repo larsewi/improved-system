@@ -530,6 +530,17 @@ mod tests {
         }
     }
 
+    /// Build an empty ProtoDelta with the given column names. Tests push
+    /// inserts, deletes, or updates onto the returned delta as needed.
+    fn dummy_delta(column_names: &[&str]) -> ProtoDelta {
+        ProtoDelta {
+            column_names: column_names.iter().map(|s| s.to_string()).collect(),
+            inserts: vec![],
+            deletes: vec![],
+            updates: vec![],
+        }
+    }
+
     #[test]
     fn test_sql_type_from_config() {
         assert_eq!(SqlType::from_config("TEXT").unwrap(), SqlType::Text);
@@ -628,19 +639,13 @@ mod tests {
         let table_config = dummy_table(&[("id", true)]);
         let config = dummy_config(HashMap::from([("test_table".to_string(), table_config)]));
 
+        let mut delta = dummy_delta(&["id"]);
+        delta.inserts.push(Entry {
+            key: vec!["1".to_string()],
+            value: vec![],
+        });
         let patch = dummy_patch(
-            HashMap::from([(
-                "test_table".to_string(),
-                ProtoDelta {
-                    column_names: vec!["id".to_string()],
-                    inserts: vec![Entry {
-                        key: vec!["1".to_string()],
-                        value: vec![],
-                    }],
-                    deletes: vec![],
-                    updates: vec![],
-                },
-            )]),
+            HashMap::from([("test_table".to_string(), delta)]),
             HashMap::from([("test_table".to_string(), "wrong_hash".to_string())]),
         );
 
@@ -654,19 +659,13 @@ mod tests {
         let table_config = dummy_table(&[("id", true)]);
         let config = dummy_config(HashMap::from([("test_table".to_string(), table_config)]));
 
+        let mut delta = dummy_delta(&["id"]);
+        delta.inserts.push(Entry {
+            key: vec!["1".to_string()],
+            value: vec![],
+        });
         let patch = dummy_patch(
-            HashMap::from([(
-                "test_table".to_string(),
-                ProtoDelta {
-                    column_names: vec!["id".to_string()],
-                    inserts: vec![Entry {
-                        key: vec!["1".to_string()],
-                        value: vec![],
-                    }],
-                    deletes: vec![],
-                    updates: vec![],
-                },
-            )]),
+            HashMap::from([("test_table".to_string(), delta)]),
             HashMap::new(),
         );
 
@@ -681,19 +680,13 @@ mod tests {
         let correct_hash = table_config.field_hash();
         let config = dummy_config(HashMap::from([("test_table".to_string(), table_config)]));
 
+        let mut delta = dummy_delta(&["id"]);
+        delta.inserts.push(Entry {
+            key: vec!["1".to_string()],
+            value: vec![],
+        });
         let patch = dummy_patch(
-            HashMap::from([(
-                "test_table".to_string(),
-                ProtoDelta {
-                    column_names: vec!["id".to_string()],
-                    inserts: vec![Entry {
-                        key: vec!["1".to_string()],
-                        value: vec![],
-                    }],
-                    deletes: vec![],
-                    updates: vec![],
-                },
-            )]),
+            HashMap::from([("test_table".to_string(), delta)]),
             HashMap::from([("test_table".to_string(), correct_hash)]),
         );
 
@@ -709,21 +702,15 @@ mod tests {
         let correct_hash = table_config.field_hash();
         let config = dummy_config(HashMap::from([("test_table".to_string(), table_config)]));
 
+        let mut delta = dummy_delta(&["id", "name"]);
+        delta.updates.push(crate::update::Update {
+            key: vec!["1".to_string()],
+            changed_indices: vec![5],
+            old_value: vec![],
+            new_value: vec!["x".to_string()],
+        });
         let patch = dummy_patch(
-            HashMap::from([(
-                "test_table".to_string(),
-                ProtoDelta {
-                    column_names: vec!["id".to_string(), "name".to_string()],
-                    inserts: vec![],
-                    deletes: vec![],
-                    updates: vec![crate::update::Update {
-                        key: vec!["1".to_string()],
-                        changed_indices: vec![5],
-                        old_value: vec![],
-                        new_value: vec!["x".to_string()],
-                    }],
-                },
-            )]),
+            HashMap::from([("test_table".to_string(), delta)]),
             HashMap::from([("test_table".to_string(), correct_hash)]),
         );
 
