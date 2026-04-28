@@ -745,7 +745,8 @@ fields = [
     { name = "id", type = "NUMBER", primary-key = true },
 ]
 "#;
-        let err = toml::from_str::<Config>(toml_input).unwrap_err();
+        let result: Result<Config, _> = toml::from_str(toml_input);
+        let err = result.expect_err("invalid regex should fail to parse");
         assert!(
             err.to_string().contains("regex"),
             "expected error to mention 'regex', got: {err}"
@@ -761,6 +762,214 @@ fields = [
             filter
                 .should_filter("t", &fields, &["1", "Alice"])
                 .is_none()
+        );
+    }
+
+    #[test]
+    fn test_should_filter_include_match_keeps_record() {
+        let filter = FilterConfig {
+            max_field_length: None,
+            include: vec![make_rule(vec![], "status", "^(active|pending)$")],
+            exclude: vec![],
+        };
+        let fields = vec!["id".to_string(), "status".to_string()];
+
+        assert!(
+            filter
+                .should_filter("t", &fields, &["1", "active"])
+                .is_none()
+        );
+        assert!(
+            filter
+                .should_filter("t", &fields, &["2", "pending"])
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn test_should_filter_include_no_match_drops_record() {
+        let filter = FilterConfig {
+            max_field_length: None,
+            include: vec![make_rule(vec![], "status", "^(active|pending)$")],
+            exclude: vec![],
+        };
+        let fields = vec!["id".to_string(), "status".to_string()];
+
+        assert!(
+            filter
+                .should_filter("t", &fields, &["1", "inactive"])
+                .is_some()
+        );
+    }
+
+    #[test]
+    fn test_should_filter_include_unanchored_regex() {
+        let filter = FilterConfig {
+            max_field_length: None,
+            include: vec![make_rule(vec![], "desc", "PRODUCTION")],
+            exclude: vec![],
+        };
+        let fields = vec!["id".to_string(), "desc".to_string()];
+
+        assert!(
+            filter
+                .should_filter("t", &fields, &["1", "PRODUCTION ready"])
+                .is_none()
+        );
+        assert!(
+            filter
+                .should_filter("t", &fields, &["2", "draft item"])
+                .is_some()
+        );
+    }
+
+    /// Multiple include rules combine with OR semantics: a record passes if
+    /// it matches at least one applicable rule.
+    #[test]
+    fn test_should_filter_include_or_semantics() {
+        let filter = FilterConfig {
+            max_field_length: None,
+            include: vec![
+                make_rule(vec![], "status", "^active$"),
+                make_rule(vec![], "status", "^pending$"),
+            ],
+            exclude: vec![],
+        };
+        let fields = vec!["id".to_string(), "status".to_string()];
+
+        assert!(
+            filter
+                .should_filter("t", &fields, &["1", "active"])
+                .is_none()
+        );
+        assert!(
+            filter
+                .should_filter("t", &fields, &["2", "pending"])
+                .is_none()
+        );
+        assert!(
+            filter
+                .should_filter("t", &fields, &["3", "archived"])
+                .is_some()
+        );
+    }
+
+    /// An include rule whose `field` does not exist in the table is silently
+    /// skipped. When that's the only include rule, the record is unconstrained.
+    #[test]
+    fn test_should_filter_include_skipped_when_field_not_in_table() {
+        let filter = FilterConfig {
+            max_field_length: None,
+            include: vec![make_rule(vec![], "nonexistent", "^value$")],
+            exclude: vec![],
+        };
+        let fields = vec!["id".to_string(), "name".to_string()];
+
+        assert!(
+            filter
+                .should_filter("t", &fields, &["1", "Alice"])
+                .is_none()
+        );
+    }
+
+    /// When include rules exist but all are scoped to other tables, the
+    /// current table is unconstrained — records pass.
+    #[test]
+    fn test_should_filter_include_no_applicable_rule_keeps_record() {
+        let filter = FilterConfig {
+            max_field_length: None,
+            include: vec![make_rule(vec!["users"], "status", "^active$")],
+            exclude: vec![],
+        };
+        let fields = vec!["id".to_string(), "status".to_string()];
+
+        assert!(
+            filter
+                .should_filter("orders", &fields, &["1", "archived"])
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn test_should_filter_include_table_scoped() {
+        let filter = FilterConfig {
+            max_field_length: None,
+            include: vec![make_rule(vec!["users"], "status", "^active$")],
+            exclude: vec![],
+        };
+        let fields = vec!["id".to_string(), "status".to_string()];
+
+        assert!(
+            filter
+                .should_filter("users", &fields, &["1", "active"])
+                .is_none()
+        );
+        assert!(
+            filter
+                .should_filter("users", &fields, &["2", "inactive"])
+                .is_some()
+        );
+        // "orders" table is unconstrained (rule scoped to "users")
+        assert!(
+            filter
+                .should_filter("orders", &fields, &["3", "anything"])
+                .is_none()
+        );
+    }
+
+    /// When a record matches both an include rule and an exclude rule, the
+    /// exclude rule wins. Reason strings are checked exactly to disambiguate
+    /// which rule fired — `.is_some()` would not catch a regression where
+    /// include accidentally short-circuits exclude.
+    #[test]
+    fn test_should_filter_exclude_wins_over_include() {
+        let filter = FilterConfig {
+            max_field_length: None,
+            include: vec![make_rule(vec![], "status", "^(active|pending)$")],
+            exclude: vec![make_rule(vec![], "status", "^pending$")],
+        };
+        let fields = vec!["id".to_string(), "status".to_string()];
+
+        // active: matches include, no exclude → kept
+        assert!(
+            filter
+                .should_filter("t", &fields, &["1", "active"])
+                .is_none()
+        );
+        // pending: matches both → dropped with the exclude reason
+        assert_eq!(
+            filter
+                .should_filter("t", &fields, &["2", "pending"])
+                .as_deref(),
+            Some("field 'status' matches exclude rule"),
+        );
+        // archived: doesn't match include → dropped with the include reason
+        assert_eq!(
+            filter
+                .should_filter("t", &fields, &["3", "archived"])
+                .as_deref(),
+            Some("no include rule matched"),
+        );
+    }
+
+    #[test]
+    fn test_invalid_include_regex_fails_to_load() {
+        let toml_input = r#"
+[[filters.include]]
+field = "status"
+regex = "["
+
+[tables.users]
+source = "users.csv"
+fields = [
+    { name = "id", type = "NUMBER", primary-key = true },
+]
+"#;
+        let result: Result<Config, _> = toml::from_str(toml_input);
+        let err = result.expect_err("invalid regex should fail to parse");
+        assert!(
+            err.to_string().contains("regex"),
+            "expected error to mention 'regex', got: {err}"
         );
     }
 }
