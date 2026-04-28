@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result, anyhow, bail};
 
 use crate::config::{Config, FieldConfig};
 use crate::entry::Entry;
@@ -303,7 +303,13 @@ fn format_update(
 
     let mut set_parts = Vec::new();
     for (&index, value) in indices.iter().zip(update.new_value.iter()) {
-        let field = &subsidiary_fields[index as usize];
+        let field = subsidiary_fields.get(index as usize).ok_or_else(|| {
+            anyhow!(
+                "changed_indices entry {} is out of range (table has {} subsidiary columns)",
+                index,
+                subsidiary_fields.len()
+            )
+        })?;
         let literal =
             format_value(value, field).with_context(|| format!("field '{}'", field.name))?;
         set_parts.push(format!("{} = {}", quote_identifier(&field.name), literal));
@@ -712,5 +718,66 @@ mod tests {
 
         let result = patch_to_sql(&config, &patch).unwrap().unwrap();
         assert!(result.contains("INSERT INTO"));
+    }
+
+    #[test]
+    fn test_patch_to_sql_rejects_out_of_range_changed_index() {
+        // Two-column table: id (PK) + name (subsidiary). An update whose
+        // changed_indices points at column 5 must bail rather than panic.
+        let table_config = crate::config::TableConfig {
+            source: "test.csv".to_string(),
+            header: false,
+            fields: vec![
+                FieldConfig {
+                    name: "id".to_string(),
+                    sql_type: "TEXT".to_string(),
+                    primary_key: true,
+                    null: None,
+                },
+                FieldConfig {
+                    name: "name".to_string(),
+                    sql_type: "TEXT".to_string(),
+                    primary_key: false,
+                    null: None,
+                },
+            ],
+        };
+        let correct_hash = table_config.field_hash();
+
+        let config = Config {
+            work_dir: std::path::PathBuf::from("/tmp"),
+            injected_fields: Vec::new(),
+            compression: crate::config::CompressionConfig::default(),
+            tables: HashMap::from([("test_table".to_string(), table_config)]),
+            truncate: TruncateConfig::default(),
+            filters: crate::config::FilterConfig::default(),
+        };
+
+        let patch = ProtoPatch {
+            head: "abc123".to_string(),
+            created: None,
+            injected_fields: Vec::new(),
+            num_blocks: 1,
+            deltas: HashMap::from([(
+                "test_table".to_string(),
+                ProtoDelta {
+                    column_names: vec!["id".to_string(), "name".to_string()],
+                    inserts: vec![],
+                    deletes: vec![],
+                    updates: vec![crate::update::Update {
+                        key: vec!["1".to_string()],
+                        changed_indices: vec![5],
+                        old_value: vec![],
+                        new_value: vec!["x".to_string()],
+                    }],
+                },
+            )]),
+            states: HashMap::new(),
+            field_hashes: HashMap::from([("test_table".to_string(), correct_hash)]),
+        };
+
+        let err = patch_to_sql(&config, &patch).unwrap_err();
+        let msg = format!("{:#}", err);
+        assert!(msg.contains("out of range"), "got: {}", msg);
     }
 }
