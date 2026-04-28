@@ -494,6 +494,24 @@ mod tests {
         }
     }
 
+    /// Build a TableConfig for tests. Each entry is `(field_name, is_primary_key)`;
+    /// all fields are TEXT with no NULL sentinel.
+    fn dummy_table(fields: &[(&str, bool)]) -> crate::config::TableConfig {
+        crate::config::TableConfig {
+            source: "test.csv".to_string(),
+            header: false,
+            fields: fields
+                .iter()
+                .map(|(name, primary_key)| FieldConfig {
+                    name: name.to_string(),
+                    sql_type: "TEXT".to_string(),
+                    primary_key: *primary_key,
+                    null: None,
+                })
+                .collect(),
+        }
+    }
+
     #[test]
     fn test_sql_type_from_config() {
         assert_eq!(SqlType::from_config("TEXT").unwrap(), SqlType::Text);
@@ -589,17 +607,7 @@ mod tests {
 
     #[test]
     fn test_patch_to_sql_rejects_mismatched_field_hash() {
-        let table_config = crate::config::TableConfig {
-            source: "test.csv".to_string(),
-            header: false,
-            fields: vec![FieldConfig {
-                name: "id".to_string(),
-                sql_type: "TEXT".to_string(),
-                primary_key: true,
-                null: None,
-            }],
-        };
-
+        let table_config = dummy_table(&[("id", true)]);
         let config = dummy_config(HashMap::from([("test_table".to_string(), table_config)]));
 
         let patch = ProtoPatch {
@@ -630,17 +638,7 @@ mod tests {
 
     #[test]
     fn test_patch_to_sql_rejects_missing_field_hash() {
-        let table_config = crate::config::TableConfig {
-            source: "test.csv".to_string(),
-            header: false,
-            fields: vec![FieldConfig {
-                name: "id".to_string(),
-                sql_type: "TEXT".to_string(),
-                primary_key: true,
-                null: None,
-            }],
-        };
-
+        let table_config = dummy_table(&[("id", true)]);
         let config = dummy_config(HashMap::from([("test_table".to_string(), table_config)]));
 
         let patch = ProtoPatch {
@@ -671,16 +669,7 @@ mod tests {
 
     #[test]
     fn test_patch_to_sql_accepts_matching_field_hash() {
-        let table_config = crate::config::TableConfig {
-            source: "test.csv".to_string(),
-            header: false,
-            fields: vec![FieldConfig {
-                name: "id".to_string(),
-                sql_type: "TEXT".to_string(),
-                primary_key: true,
-                null: None,
-            }],
-        };
+        let table_config = dummy_table(&[("id", true)]);
         let correct_hash = table_config.field_hash();
         let config = dummy_config(HashMap::from([("test_table".to_string(), table_config)]));
 
@@ -713,24 +702,7 @@ mod tests {
     fn test_patch_to_sql_rejects_out_of_range_changed_index() {
         // Two-column table: id (PK) + name (subsidiary). An update whose
         // changed_indices points at column 5 must bail rather than panic.
-        let table_config = crate::config::TableConfig {
-            source: "test.csv".to_string(),
-            header: false,
-            fields: vec![
-                FieldConfig {
-                    name: "id".to_string(),
-                    sql_type: "TEXT".to_string(),
-                    primary_key: true,
-                    null: None,
-                },
-                FieldConfig {
-                    name: "name".to_string(),
-                    sql_type: "TEXT".to_string(),
-                    primary_key: false,
-                    null: None,
-                },
-            ],
-        };
+        let table_config = dummy_table(&[("id", true), ("name", false)]);
         let correct_hash = table_config.field_hash();
         let config = dummy_config(HashMap::from([("test_table".to_string(), table_config)]));
 
