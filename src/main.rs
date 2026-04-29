@@ -111,9 +111,9 @@ fn walk_back(work_dir: &std::path::Path, num_blocks: u32) -> Result<String> {
     for i in 0..num_blocks {
         if hash == GENESIS_HASH {
             bail!(
-                "only {} block(s) in chain, cannot go back {}",
-                i,
-                num_blocks
+                "cannot walk back {} block(s); only {} reachable from HEAD",
+                num_blocks,
+                i
             );
         }
         hash = Block::load_parent_hash(work_dir, &hash)?;
