@@ -105,6 +105,18 @@ pub struct FilterConfig {
     pub exclude: Vec<FilterRule>,
 }
 
+/// Look up the value whose field name is `target`. Returns `None` if
+/// `target` isn't in `field_names` or if `values` is shorter than
+/// `field_names`.
+fn find_field_value<'a>(
+    field_names: &[String],
+    values: &'a [&str],
+    target: &str,
+) -> Option<&'a str> {
+    let position = field_names.iter().position(|name| name == target)?;
+    values.get(position).copied()
+}
+
 impl FilterConfig {
     /// Returns `Some(reason)` if the record should be filtered out, `None` to keep.
     pub fn should_filter(
@@ -114,11 +126,11 @@ impl FilterConfig {
         values: &[&str],
     ) -> Option<String> {
         if let Some(max_length) = self.max_field_length {
-            for (i, value) in values.iter().enumerate() {
+            for (name, value) in field_names.iter().zip(values.iter()) {
                 if value.len() > max_length {
                     return Some(format!(
                         "field '{}' length {} exceeds max-field-length {}",
-                        field_names[i],
+                        name,
                         value.len(),
                         max_length
                     ));
@@ -129,27 +141,37 @@ impl FilterConfig {
         let mut any_include_matched = false;
         for include in &self.include {
             if !include.applies_to(table_name) {
+                // Rule does not apply for this table
                 continue;
             }
-            let Some(position) = field_names.iter().position(|name| name == &include.field) else {
+            let Some(value) = find_field_value(field_names, values, &include.field) else {
+                // Field does not exist in table
                 continue;
             };
             has_applicable_include = true;
-            if include.regex.is_match(values[position]) {
+            if include.regex.is_match(value) {
                 any_include_matched = true;
                 break;
             }
         }
+
         if has_applicable_include && !any_include_matched {
+            // An include rule applied to this table, but none matched
             return Some("no include rule matched".to_string());
         }
+
         for exclude in &self.exclude {
             if !exclude.applies_to(table_name) {
+                // Rule does not apply for this table
                 continue;
             }
-            if let Some(position) = field_names.iter().position(|name| name == &exclude.field)
-                && exclude.regex.is_match(values[position])
-            {
+
+            let Some(value) = find_field_value(field_names, values, &exclude.field) else {
+                // Field does not exist in table
+                continue;
+            };
+
+            if exclude.regex.is_match(value) {
                 return Some(format!("field '{}' matches exclude rule", exclude.field));
             }
         }
