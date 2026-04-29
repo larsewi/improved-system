@@ -260,6 +260,20 @@ impl Delta {
             // Merge sparse-expanded updates: only touch positions that actually
             // changed in the child update.
             log::trace!("Rule 15: update + update merged for key {:?}", key);
+            if update.0.len() != update.1.len()
+                || update.0.len() != old_value.len()
+                || update.0.len() != new_value.len()
+            {
+                bail!(
+                    "rule 15: vector length mismatch for key {:?}: \
+                     parent old/new = {}/{}, child old/new = {}/{}",
+                    key,
+                    update.0.len(),
+                    update.1.len(),
+                    old_value.len(),
+                    new_value.len()
+                );
+            }
             for i in 0..update.0.len() {
                 let parent_changed = update.0[i] != update.1[i];
                 let child_changed = old_value[i] != new_value[i];
