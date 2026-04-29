@@ -21,11 +21,14 @@ struct CallbackLogger;
 
 impl Log for CallbackLogger {
     fn enabled(&self, _metadata: &Metadata) -> bool {
-        CALLBACK.read().unwrap().is_some()
+        match CALLBACK.read() {
+            Ok(guard) => guard.is_some(),
+            Err(_) => false,
+        }
     }
 
     fn log(&self, record: &Record) {
-        let guard = CALLBACK.read().unwrap();
+        let Ok(guard) = CALLBACK.read() else { return };
         if let Some(ref state) = *guard {
             let message = format!("{}", record.args());
             if let Ok(cstr) = CString::new(message) {
@@ -49,8 +52,12 @@ pub(crate) fn init(callback: LogCallback, user_data: *mut c_void) {
         log::set_max_level(LevelFilter::Trace);
     });
 
-    // Set or replace the callback.
-    let mut guard = CALLBACK.write().unwrap();
+    // Set or replace the callback. The protected state is plain data, so
+    // recovering from a poisoned lock is safe.
+    let mut guard = match CALLBACK.write() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    };
     *guard = Some(CallbackState {
         callback,
         user_data,
