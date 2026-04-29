@@ -483,6 +483,64 @@ mod tests {
     use super::*;
     use crate::config::TruncateConfig;
 
+    fn dummy_config(tables: HashMap<String, crate::config::TableConfig>) -> Config {
+        Config {
+            work_dir: std::path::PathBuf::from("/tmp"),
+            injected_fields: Vec::new(),
+            compression: crate::config::CompressionConfig::default(),
+            tables,
+            truncate: TruncateConfig::default(),
+            filters: crate::config::FilterConfig::default(),
+        }
+    }
+
+    /// Build a TableConfig for tests. Each entry is `(field_name, is_primary_key)`;
+    /// all fields are TEXT with no NULL sentinel.
+    fn dummy_table(fields: &[(&str, bool)]) -> crate::config::TableConfig {
+        crate::config::TableConfig {
+            source: "test.csv".to_string(),
+            header: false,
+            fields: fields
+                .iter()
+                .map(|(name, primary_key)| FieldConfig {
+                    name: name.to_string(),
+                    sql_type: "TEXT".to_string(),
+                    primary_key: *primary_key,
+                    null: None,
+                })
+                .collect(),
+        }
+    }
+
+    /// Build a ProtoPatch for tests. Defaults `head`, `created`,
+    /// `injected_fields`, `num_blocks`, and `states`; the caller supplies
+    /// the deltas and field hashes that distinguish the test case.
+    fn dummy_patch(
+        deltas: HashMap<String, ProtoDelta>,
+        field_hashes: HashMap<String, String>,
+    ) -> ProtoPatch {
+        ProtoPatch {
+            head: "abc123".to_string(),
+            created: None,
+            injected_fields: Vec::new(),
+            num_blocks: 1,
+            deltas,
+            states: HashMap::new(),
+            field_hashes,
+        }
+    }
+
+    /// Build an empty ProtoDelta with the given column names. Tests push
+    /// inserts, deletes, or updates onto the returned delta as needed.
+    fn dummy_delta(column_names: &[&str]) -> ProtoDelta {
+        ProtoDelta {
+            column_names: column_names.iter().map(|s| s.to_string()).collect(),
+            inserts: vec![],
+            deletes: vec![],
+            updates: vec![],
+        }
+    }
+
     #[test]
     fn test_sql_type_from_config() {
         assert_eq!(SqlType::from_config("TEXT").unwrap(), SqlType::Text);
@@ -578,46 +636,18 @@ mod tests {
 
     #[test]
     fn test_patch_to_sql_rejects_mismatched_field_hash() {
-        let table_config = crate::config::TableConfig {
-            source: "test.csv".to_string(),
-            header: false,
-            fields: vec![FieldConfig {
-                name: "id".to_string(),
-                sql_type: "TEXT".to_string(),
-                primary_key: true,
-                null: None,
-            }],
-        };
+        let table_config = dummy_table(&[("id", true)]);
+        let config = dummy_config(HashMap::from([("test_table".to_string(), table_config)]));
 
-        let config = Config {
-            work_dir: std::path::PathBuf::from("/tmp"),
-            injected_fields: Vec::new(),
-            compression: crate::config::CompressionConfig::default(),
-            tables: HashMap::from([("test_table".to_string(), table_config)]),
-            truncate: TruncateConfig::default(),
-            filters: crate::config::FilterConfig::default(),
-        };
-
-        let patch = ProtoPatch {
-            head: "abc123".to_string(),
-            created: None,
-            injected_fields: Vec::new(),
-            num_blocks: 1,
-            deltas: HashMap::from([(
-                "test_table".to_string(),
-                ProtoDelta {
-                    column_names: vec!["id".to_string()],
-                    inserts: vec![Entry {
-                        key: vec!["1".to_string()],
-                        value: vec![],
-                    }],
-                    deletes: vec![],
-                    updates: vec![],
-                },
-            )]),
-            states: HashMap::new(),
-            field_hashes: HashMap::from([("test_table".to_string(), "wrong_hash".to_string())]),
-        };
+        let mut delta = dummy_delta(&["id"]);
+        delta.inserts.push(Entry {
+            key: vec!["1".to_string()],
+            value: vec![],
+        });
+        let patch = dummy_patch(
+            HashMap::from([("test_table".to_string(), delta)]),
+            HashMap::from([("test_table".to_string(), "wrong_hash".to_string())]),
+        );
 
         let err = patch_to_sql(&config, &patch).unwrap_err();
         let msg = format!("{:#}", err);
@@ -626,46 +656,18 @@ mod tests {
 
     #[test]
     fn test_patch_to_sql_rejects_missing_field_hash() {
-        let table_config = crate::config::TableConfig {
-            source: "test.csv".to_string(),
-            header: false,
-            fields: vec![FieldConfig {
-                name: "id".to_string(),
-                sql_type: "TEXT".to_string(),
-                primary_key: true,
-                null: None,
-            }],
-        };
+        let table_config = dummy_table(&[("id", true)]);
+        let config = dummy_config(HashMap::from([("test_table".to_string(), table_config)]));
 
-        let config = Config {
-            work_dir: std::path::PathBuf::from("/tmp"),
-            injected_fields: Vec::new(),
-            compression: crate::config::CompressionConfig::default(),
-            tables: HashMap::from([("test_table".to_string(), table_config)]),
-            truncate: TruncateConfig::default(),
-            filters: crate::config::FilterConfig::default(),
-        };
-
-        let patch = ProtoPatch {
-            head: "abc123".to_string(),
-            created: None,
-            injected_fields: Vec::new(),
-            num_blocks: 1,
-            deltas: HashMap::from([(
-                "test_table".to_string(),
-                ProtoDelta {
-                    column_names: vec!["id".to_string()],
-                    inserts: vec![Entry {
-                        key: vec!["1".to_string()],
-                        value: vec![],
-                    }],
-                    deletes: vec![],
-                    updates: vec![],
-                },
-            )]),
-            states: HashMap::new(),
-            field_hashes: HashMap::new(),
-        };
+        let mut delta = dummy_delta(&["id"]);
+        delta.inserts.push(Entry {
+            key: vec!["1".to_string()],
+            value: vec![],
+        });
+        let patch = dummy_patch(
+            HashMap::from([("test_table".to_string(), delta)]),
+            HashMap::new(),
+        );
 
         let err = patch_to_sql(&config, &patch).unwrap_err();
         let msg = format!("{:#}", err);
@@ -674,47 +676,19 @@ mod tests {
 
     #[test]
     fn test_patch_to_sql_accepts_matching_field_hash() {
-        let table_config = crate::config::TableConfig {
-            source: "test.csv".to_string(),
-            header: false,
-            fields: vec![FieldConfig {
-                name: "id".to_string(),
-                sql_type: "TEXT".to_string(),
-                primary_key: true,
-                null: None,
-            }],
-        };
+        let table_config = dummy_table(&[("id", true)]);
         let correct_hash = table_config.field_hash();
+        let config = dummy_config(HashMap::from([("test_table".to_string(), table_config)]));
 
-        let config = Config {
-            work_dir: std::path::PathBuf::from("/tmp"),
-            injected_fields: Vec::new(),
-            compression: crate::config::CompressionConfig::default(),
-            tables: HashMap::from([("test_table".to_string(), table_config)]),
-            truncate: TruncateConfig::default(),
-            filters: crate::config::FilterConfig::default(),
-        };
-
-        let patch = ProtoPatch {
-            head: "abc123".to_string(),
-            created: None,
-            injected_fields: Vec::new(),
-            num_blocks: 1,
-            deltas: HashMap::from([(
-                "test_table".to_string(),
-                ProtoDelta {
-                    column_names: vec!["id".to_string()],
-                    inserts: vec![Entry {
-                        key: vec!["1".to_string()],
-                        value: vec![],
-                    }],
-                    deletes: vec![],
-                    updates: vec![],
-                },
-            )]),
-            states: HashMap::new(),
-            field_hashes: HashMap::from([("test_table".to_string(), correct_hash)]),
-        };
+        let mut delta = dummy_delta(&["id"]);
+        delta.inserts.push(Entry {
+            key: vec!["1".to_string()],
+            value: vec![],
+        });
+        let patch = dummy_patch(
+            HashMap::from([("test_table".to_string(), delta)]),
+            HashMap::from([("test_table".to_string(), correct_hash)]),
+        );
 
         let result = patch_to_sql(&config, &patch).unwrap().unwrap();
         assert!(result.contains("INSERT INTO"));
@@ -724,57 +698,21 @@ mod tests {
     fn test_patch_to_sql_rejects_out_of_range_changed_index() {
         // Two-column table: id (PK) + name (subsidiary). An update whose
         // changed_indices points at column 5 must bail rather than panic.
-        let table_config = crate::config::TableConfig {
-            source: "test.csv".to_string(),
-            header: false,
-            fields: vec![
-                FieldConfig {
-                    name: "id".to_string(),
-                    sql_type: "TEXT".to_string(),
-                    primary_key: true,
-                    null: None,
-                },
-                FieldConfig {
-                    name: "name".to_string(),
-                    sql_type: "TEXT".to_string(),
-                    primary_key: false,
-                    null: None,
-                },
-            ],
-        };
+        let table_config = dummy_table(&[("id", true), ("name", false)]);
         let correct_hash = table_config.field_hash();
+        let config = dummy_config(HashMap::from([("test_table".to_string(), table_config)]));
 
-        let config = Config {
-            work_dir: std::path::PathBuf::from("/tmp"),
-            injected_fields: Vec::new(),
-            compression: crate::config::CompressionConfig::default(),
-            tables: HashMap::from([("test_table".to_string(), table_config)]),
-            truncate: TruncateConfig::default(),
-            filters: crate::config::FilterConfig::default(),
-        };
-
-        let patch = ProtoPatch {
-            head: "abc123".to_string(),
-            created: None,
-            injected_fields: Vec::new(),
-            num_blocks: 1,
-            deltas: HashMap::from([(
-                "test_table".to_string(),
-                ProtoDelta {
-                    column_names: vec!["id".to_string(), "name".to_string()],
-                    inserts: vec![],
-                    deletes: vec![],
-                    updates: vec![crate::update::Update {
-                        key: vec!["1".to_string()],
-                        changed_indices: vec![5],
-                        old_value: vec![],
-                        new_value: vec!["x".to_string()],
-                    }],
-                },
-            )]),
-            states: HashMap::new(),
-            field_hashes: HashMap::from([("test_table".to_string(), correct_hash)]),
-        };
+        let mut delta = dummy_delta(&["id", "name"]);
+        delta.updates.push(crate::update::Update {
+            key: vec!["1".to_string()],
+            changed_indices: vec![5],
+            old_value: vec![],
+            new_value: vec!["x".to_string()],
+        });
+        let patch = dummy_patch(
+            HashMap::from([("test_table".to_string(), delta)]),
+            HashMap::from([("test_table".to_string(), correct_hash)]),
+        );
 
         let err = patch_to_sql(&config, &patch).unwrap_err();
         let msg = format!("{:#}", err);
