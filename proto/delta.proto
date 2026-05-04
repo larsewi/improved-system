@@ -9,7 +9,7 @@ import "update.proto";
 // The table name is stored as the map key in the parent message.
 message Delta {
   // The names of all columns, primary key columns first.
-  repeated string column_names = 1;
+  repeated string fields = 1;
   // Entries that were added (new keys).
   repeated entry.Entry inserts = 2;
   // Entries that were removed (keys no longer present).
