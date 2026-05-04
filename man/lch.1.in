@@ -192,7 +192,7 @@ Optional
 .B [[injected\-fields]]
 entries add static columns to all generated SQL. Each entry becomes an extra
 column in INSERT statements and an extra condition in DELETE/UPDATE WHERE
-clauses. When any injected fields are configured, state-payload patches use
+clauses. When any injected fields are configured, state payload patches use
 .B "DELETE FROM ... WHERE ..."
 instead of
 .B TRUNCATE
