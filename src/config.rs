@@ -203,6 +203,10 @@ pub struct FieldConfig {
     pub primary_key: bool,
     #[serde(default, rename = "null")]
     pub null_sentinel: Option<String>,
+    #[serde(default, rename = "true")]
+    pub true_sentinel: Option<String>,
+    #[serde(default, rename = "false")]
+    pub false_sentinel: Option<String>,
 }
 
 fn default_sql_type() -> String {
@@ -232,6 +236,40 @@ impl TableConfig {
             if field.primary_key && field.null_sentinel.is_some() {
                 bail!(
                     "primary-key field '{}' must not have a null sentinel",
+                    field.name
+                );
+            }
+            if field.true_sentinel.is_some() || field.false_sentinel.is_some() {
+                let sql_type = crate::sql::SqlType::from_config(&field.sql_type)
+                    .with_context(|| format!("field '{}'", field.name))?;
+                if sql_type != crate::sql::SqlType::Boolean {
+                    bail!(
+                        "field '{}': 'true' and 'false' sentinels are only valid on BOOLEAN fields",
+                        field.name
+                    );
+                }
+            }
+            if let (Some(t), Some(f)) = (&field.true_sentinel, &field.false_sentinel)
+                && t == f
+            {
+                bail!(
+                    "field '{}': 'true' and 'false' sentinels must differ",
+                    field.name
+                );
+            }
+            if let (Some(t), Some(n)) = (&field.true_sentinel, &field.null_sentinel)
+                && t == n
+            {
+                bail!(
+                    "field '{}': 'true' and 'null' sentinels must differ",
+                    field.name
+                );
+            }
+            if let (Some(f), Some(n)) = (&field.false_sentinel, &field.null_sentinel)
+                && f == n
+            {
+                bail!(
+                    "field '{}': 'false' and 'null' sentinels must differ",
                     field.name
                 );
             }
@@ -269,9 +307,9 @@ impl TableConfig {
 
     /// Compute a SHA-1 hash over this table's SQL-affecting fields.
     /// Fields are sorted alphabetically by name for order independence.
-    /// The hash covers: field name, sql_type, and primary_key flag. The
-    /// null sentinel is excluded — it only affects CSV parsing on the
-    /// agent, and patches carry already-typed values, so the hub's SQL
+    /// The hash covers: field name, sql_type, and primary_key flag.
+    /// Sentinels are intentionally excluded — they only affect CSV parsing on
+    /// the agent, and patches carry already-typed values, so the hub's SQL
     /// output is independent of sentinel configuration.
     pub fn field_hash(&self) -> String {
         let mut sorted_fields: Vec<&FieldConfig> = self.fields.iter().collect();
@@ -493,6 +531,8 @@ mod tests {
             sql_type: sql_type.to_string(),
             primary_key,
             null_sentinel: null_sentinel.map(|s| s.to_string()),
+            true_sentinel: None,
+            false_sentinel: None,
         }
     }
 
@@ -565,6 +605,66 @@ mod tests {
             make_field("name", "TEXT", true, None),
         ]);
         assert_ne!(config_a.field_hash(), config_b.field_hash());
+    }
+
+    #[test]
+    fn test_validate_rejects_true_sentinel_on_non_boolean() {
+        let mut field = make_field("name", "TEXT", false, None);
+        field.true_sentinel = Some("Y".to_string());
+        let config = make_table_config(vec![make_field("id", "TEXT", true, None), field]);
+        let err = config.validate().unwrap_err();
+        let msg = format!("{:#}", err);
+        assert!(msg.contains("only valid on BOOLEAN"), "got: {msg}");
+    }
+
+    #[test]
+    fn test_validate_rejects_false_sentinel_on_non_boolean() {
+        let mut field = make_field("count", "NUMBER", false, None);
+        field.false_sentinel = Some("none".to_string());
+        let config = make_table_config(vec![make_field("id", "TEXT", true, None), field]);
+        let err = config.validate().unwrap_err();
+        let msg = format!("{:#}", err);
+        assert!(msg.contains("only valid on BOOLEAN"), "got: {msg}");
+    }
+
+    #[test]
+    fn test_validate_rejects_equal_true_and_false_sentinels() {
+        let mut field = make_field("flag", "BOOLEAN", false, None);
+        field.true_sentinel = Some("X".to_string());
+        field.false_sentinel = Some("X".to_string());
+        let config = make_table_config(vec![make_field("id", "TEXT", true, None), field]);
+        let err = config.validate().unwrap_err();
+        let msg = format!("{:#}", err);
+        assert!(msg.contains("'true' and 'false' sentinels"), "got: {msg}");
+    }
+
+    #[test]
+    fn test_validate_rejects_true_sentinel_collision_with_null() {
+        let mut field = make_field("flag", "BOOLEAN", false, Some("X"));
+        field.true_sentinel = Some("X".to_string());
+        let config = make_table_config(vec![make_field("id", "TEXT", true, None), field]);
+        let err = config.validate().unwrap_err();
+        let msg = format!("{:#}", err);
+        assert!(msg.contains("'true' and 'null' sentinels"), "got: {msg}");
+    }
+
+    #[test]
+    fn test_validate_rejects_false_sentinel_collision_with_null() {
+        let mut field = make_field("flag", "BOOLEAN", false, Some("X"));
+        field.false_sentinel = Some("X".to_string());
+        let config = make_table_config(vec![make_field("id", "TEXT", true, None), field]);
+        let err = config.validate().unwrap_err();
+        let msg = format!("{:#}", err);
+        assert!(msg.contains("'false' and 'null' sentinels"), "got: {msg}");
+    }
+
+    #[test]
+    fn test_validate_accepts_distinct_sentinels_on_boolean() {
+        let mut field = make_field("flag", "BOOLEAN", false, Some("?"));
+        field.true_sentinel = Some("Y".to_string());
+        field.false_sentinel = Some("N".to_string());
+        let config = make_table_config(vec![make_field("id", "TEXT", true, None), field]);
+        config.validate().unwrap();
     }
 
     fn make_rule(tables: Vec<&str>, field: &str, regex: &str) -> FilterRule {
