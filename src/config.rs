@@ -269,7 +269,10 @@ impl TableConfig {
 
     /// Compute a SHA-1 hash over this table's SQL-affecting fields.
     /// Fields are sorted alphabetically by name for order independence.
-    /// The hash covers: field name, sql_type, primary_key flag, and null sentinel.
+    /// The hash covers: field name, sql_type, and primary_key flag. The
+    /// null sentinel is excluded — it only affects CSV parsing on the
+    /// agent, and patches carry already-typed values, so the hub's SQL
+    /// output is independent of sentinel configuration.
     pub fn field_hash(&self) -> String {
         let mut sorted_fields: Vec<&FieldConfig> = self.fields.iter().collect();
         sorted_fields.sort_by(|a, b| a.name.cmp(&b.name));
@@ -285,13 +288,6 @@ impl TableConfig {
             data.extend_from_slice(normalized.as_bytes());
             data.push(0);
             data.push(u8::from(field.primary_key));
-            data.push(0);
-            if let Some(ref sentinel) = field.null_sentinel {
-                data.push(1);
-                data.extend_from_slice(sentinel.as_bytes());
-            } else {
-                data.push(0);
-            }
             data.push(0);
         }
 
@@ -555,19 +551,6 @@ mod tests {
     fn test_field_hash_changes_on_type() {
         let config_a = make_table_config(vec![make_field("id", "NUMBER", true, None)]);
         let config_b = make_table_config(vec![make_field("id", "TEXT", true, None)]);
-        assert_ne!(config_a.field_hash(), config_b.field_hash());
-    }
-
-    #[test]
-    fn test_field_hash_changes_on_null() {
-        let config_a = make_table_config(vec![
-            make_field("id", "TEXT", true, None),
-            make_field("val", "TEXT", false, None),
-        ]);
-        let config_b = make_table_config(vec![
-            make_field("id", "TEXT", true, None),
-            make_field("val", "TEXT", false, Some("")),
-        ]);
         assert_ne!(config_a.field_hash(), config_b.field_hash());
     }
 
