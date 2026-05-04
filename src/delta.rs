@@ -18,7 +18,7 @@ type UpdateMap = HashMap<Vec<Value>, (Vec<Value>, Vec<Value>)>;
 #[derive(Debug, Clone, PartialEq)]
 pub struct Delta {
     /// The names of all columns, primary key columns first.
-    pub column_names: Vec<String>,
+    pub fields: Vec<String>,
     /// Entries that were added (key -> value).
     pub inserts: RecordMap,
     /// Entries that were removed (key -> value).
@@ -47,7 +47,7 @@ impl TryFrom<ProtoDelta> for Delta {
         }
 
         Ok(Delta {
-            column_names: proto.column_names,
+            fields: proto.fields,
             inserts,
             deletes,
             updates,
@@ -58,7 +58,7 @@ impl TryFrom<ProtoDelta> for Delta {
 impl From<Delta> for ProtoDelta {
     fn from(delta: Delta) -> Self {
         ProtoDelta {
-            column_names: delta.column_names,
+            fields: delta.fields,
             inserts: delta.inserts.into_iter().map(Into::into).collect(),
             deletes: delta.deletes.into_iter().map(Into::into).collect(),
             updates: delta.updates.into_iter().map(Into::into).collect(),
@@ -69,7 +69,7 @@ impl From<Delta> for ProtoDelta {
 impl ProtoDelta {
     /// Number of subsidiary (non-key) columns.
     ///
-    /// The proto format stores keys and values separately, but `column_names`
+    /// The proto format stores keys and values separately, but `fields`
     /// lists all columns together (PK first, then subsidiary). This method
     /// determines the PK count from the first available entry's key length
     /// (trying inserts, then deletes, then updates; defaulting to 0 if the
@@ -84,14 +84,14 @@ impl ProtoDelta {
         } else {
             0
         };
-        if self.column_names.len() < num_primary_keys {
+        if self.fields.len() < num_primary_keys {
             bail!(
-                "column_names has {} entries but primary key has {}",
-                self.column_names.len(),
+                "fields has {} entries but primary key has {}",
+                self.fields.len(),
                 num_primary_keys
             );
         }
-        Ok(self.column_names.len() - num_primary_keys)
+        Ok(self.fields.len() - num_primary_keys)
     }
 
     fn fmt_inserts(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -154,7 +154,7 @@ impl ProtoDelta {
 
 impl fmt::Display for ProtoDelta {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "[{}]", self.column_names.join(", "))?;
+        write!(f, "[{}]", self.fields.join(", "))?;
         let num_subsidiary = match self.num_subsidiary() {
             Ok(num_subsidiary) => num_subsidiary,
             Err(e) => return write!(f, " <corrupt delta: {}>", e),
@@ -171,12 +171,8 @@ impl Delta {
     /// represents the combined effect of both. See DELTA_MERGING_RULES.md for
     /// the full specification of the 15 rules.
     pub fn merge(&mut self, child: Delta) -> Result<()> {
-        if self.column_names != child.column_names {
-            bail!(
-                "field mismatch ({:?} vs {:?})",
-                self.column_names,
-                child.column_names
-            );
+        if self.fields != child.fields {
+            bail!("field mismatch ({:?} vs {:?})", self.fields, child.fields);
         }
 
         for (key, value) in child.inserts {
@@ -355,7 +351,7 @@ impl Delta {
             deltas.insert(
                 table_name.clone(),
                 Some(Delta {
-                    column_names: current_table.fields.clone(),
+                    fields: current_table.fields.clone(),
                     inserts,
                     deletes,
                     updates,
@@ -379,7 +375,7 @@ impl Delta {
                 deltas.insert(
                     table_name.clone(),
                     Some(Delta {
-                        column_names: table.fields.clone(),
+                        fields: table.fields.clone(),
                         inserts: HashMap::new(),
                         deletes: table.records.clone(),
                         updates: HashMap::new(),
@@ -710,7 +706,7 @@ mod tests {
 
     fn empty_delta() -> Delta {
         Delta {
-            column_names: vec![],
+            fields: vec![],
             inserts: HashMap::new(),
             deletes: HashMap::new(),
             updates: HashMap::new(),
@@ -1108,13 +1104,13 @@ mod tests {
     #[test]
     fn test_merge_field_mismatch_error() {
         let mut parent_delta = Delta {
-            column_names: vec!["id".to_string(), "name".to_string()],
+            fields: vec!["id".to_string(), "name".to_string()],
             inserts: HashMap::new(),
             deletes: HashMap::new(),
             updates: HashMap::new(),
         };
         let child_delta = Delta {
-            column_names: vec!["id".to_string(), "email".to_string()],
+            fields: vec!["id".to_string(), "email".to_string()],
             inserts: HashMap::new(),
             deletes: HashMap::new(),
             updates: HashMap::new(),

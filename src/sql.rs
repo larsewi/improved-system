@@ -539,9 +539,9 @@ mod tests {
 
     /// Build an empty ProtoDelta with the given column names. Tests push
     /// inserts, deletes, or updates onto the returned delta as needed.
-    fn dummy_delta(column_names: &[&str]) -> ProtoDelta {
+    fn dummy_delta(fields: &[&str]) -> ProtoDelta {
         ProtoDelta {
-            column_names: column_names.iter().map(|s| s.to_string()).collect(),
+            fields: fields.iter().map(|s| s.to_string()).collect(),
             inserts: vec![],
             deletes: vec![],
             updates: vec![],

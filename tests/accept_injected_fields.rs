@@ -284,7 +284,7 @@ fields = [
         "SQL should contain hostkey column"
     );
     assert!(sql.contains("'abc123'"), "SQL should contain hostkey value");
-    // Runtime injection should trigger the same state-payload partitioning as
+    // Runtime injection should trigger the same state payload partitioning as
     // static injection: DELETE WHERE instead of TRUNCATE.
     assert!(
         !sql.contains("TRUNCATE"),
