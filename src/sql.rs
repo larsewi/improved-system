@@ -63,7 +63,7 @@ pub fn parse_boolean(value: &str, true_sentinel: &str, false_sentinel: &str) -> 
 
 /// Parse a string into a typed `Value` according to the SQL type tag.
 /// Boolean parsing uses the default sentinels; CSV-parsing callers that
-/// honour per-field overrides should call [`parse_boolean`] directly.
+/// honor per-field overrides should call [`parse_boolean`] directly.
 pub fn parse_typed_value(value: &str, sql_type: &SqlType) -> Result<Value> {
     match sql_type {
         SqlType::Text => Ok(Value::Text(value.to_string())),
@@ -84,7 +84,7 @@ pub fn parse_typed_value(value: &str, sql_type: &SqlType) -> Result<Value> {
 /// Schema information for a single table, derived from the wire-declared
 /// field list. Column ordering follows the wire (i.e. the agent's
 /// declaration order): primary-key columns first, then subsidiary columns.
-/// The hub honours that order when generating SQL so values land in the
+/// The hub honors that order when generating SQL so values land in the
 /// columns the agent intended, regardless of how the hub config declares
 /// them.
 struct TableSchema<'a> {
@@ -196,7 +196,7 @@ impl<'a> TableSchema<'a> {
 /// Validate that a wire `Value`'s variant agrees with the field's declared
 /// `sql_type`, and that `Null` only appears in nullable fields.
 fn check_value_matches_field(value: &Value, field: &FieldConfig) -> Result<()> {
-    if matches!(value, Value::Null) {
+    if value.is_null() {
         if field.null_sentinel.is_none() {
             bail!(
                 "field '{}' is not nullable but wire value is NULL",
@@ -208,12 +208,11 @@ fn check_value_matches_field(value: &Value, field: &FieldConfig) -> Result<()> {
 
     let expected =
         SqlType::from_config(&field.sql_type).with_context(|| format!("field '{}'", field.name))?;
-    let actual_ok = matches!(
-        (&expected, value),
-        (SqlType::Text, Value::Text(_))
-            | (SqlType::Number, Value::Number(_))
-            | (SqlType::Boolean, Value::Boolean(_))
-    );
+    let actual_ok = match expected {
+        SqlType::Text => value.is_text(),
+        SqlType::Number => value.is_number(),
+        SqlType::Boolean => value.is_boolean(),
+    };
     if !actual_ok {
         bail!(
             "field '{}': wire value {} does not match declared type {:?}",
