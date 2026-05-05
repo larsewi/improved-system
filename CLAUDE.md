@@ -26,6 +26,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Prefer imports over fully-qualified paths. Add `use` items for types and functions that are used in a file rather than repeating `crate::module::Type` or `std::collections::HashMap` inline.
 - When a proto type clashes with a domain type of the same name, prefix the import with `Proto` (e.g., `use crate::proto::delta::Delta as ProtoDelta`).
 - Avoid abbreviations in variable names. Prefer descriptive names (e.g., `table_config` over `tc`).
+- Use American English spelling in code, comments, and documentation (e.g., `honor` not `honour`, `color` not `colour`).
 - Place `#[cfg(test)] mod tests` at the bottom of each file, after all production code.
 - Prefer `From`/`Into` (or `TryFrom`/`TryInto` for fallible conversions) over manual construction when converting between types, especially domain-to-proto conversions.
 - After implementing new features, look for opportunities to refactor the code to improve readability and reduce duplication.
