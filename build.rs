@@ -2,21 +2,21 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 fn main() {
-    prost_build::compile_protos(
-        &[
-            "proto/block.proto",
-            "proto/delta.proto",
-            "proto/entry.proto",
-            "proto/injected.proto",
-            "proto/patch.proto",
-            "proto/state.proto",
-            "proto/table.proto",
-            "proto/update.proto",
-            "proto/cell.proto",
-        ],
-        &["proto/"],
-    )
-    .unwrap();
+    let proto_files = [
+        "proto/block.proto",
+        "proto/delta.proto",
+        "proto/entry.proto",
+        "proto/injected.proto",
+        "proto/patch.proto",
+        "proto/state.proto",
+        "proto/table.proto",
+        "proto/update.proto",
+        "proto/cell.proto",
+    ];
+    prost_build::compile_protos(&proto_files, &["proto/"]).unwrap();
+    for proto in &proto_files {
+        println!("cargo:rerun-if-changed={proto}");
+    }
 
     // Forward build metadata so integration tests can compile C code and find
     // the cdylib without hard-coding paths or profiles.

@@ -111,16 +111,15 @@ columns. The library then compares each table's consolidated delta encoded size
 against its full state and picks whichever is smaller. This means a single patch
 can contain a mix of delta tables and full state tables.
 
-Each patch also carries per-table field hashes computed from the config
-(`field_hashes`). These let the hub validate that its view of the shared
-schema matches the agent's before generating SQL. The hash covers field
-name, SQL type, primary-key flag, and whether a null sentinel is configured
-(but not the sentinel string itself, nor the per-field `true`/`false`
-sentinels). Sentinel strings are agent-local CSV parsing rules — different
-agents feeding the same hub can use different conventions and still hash
-identically — but the *presence* of a null sentinel reflects whether the
-agent can emit `NULL` for the column, which must agree with the hub's view
-of column nullability.
+The hub validates each patch against its own config at SQL-generation
+time. `delta.fields`/`table.fields` (carried per-table on the wire) must
+match the hub's field set in count and names, and the wire's primary-key
+prefix must equal the hub's primary-key set. Each cell's `Value` variant
+is then checked against the hub's declared `sql_type`, and `NULL` is only
+accepted on fields with a configured null sentinel. Together these
+defend against agents that misrepresent the schema or emit values of the
+wrong type. Sentinel strings themselves are agent-local CSV parsing rules
+and never need to agree between agent and hub.
 
 Printing the patch shows any combination of deltas and states:
 
@@ -146,12 +145,14 @@ Patch:
 ### patch_to_sql()
 
 `patch_to_sql()` converts an encoded patch into SQL statements suitable for
-replaying changes on a target database. Before generating SQL for each table,
-it validates the table's field hash from the patch against the hub's config. If
-the hashes don't match (or are missing), the table is skipped with a warning —
-other tables are still processed. For delta tables it generates `DELETE`,
+replaying changes on a target database. For delta tables it generates `DELETE`,
 `INSERT`, and `UPDATE` statements. For full state tables it generates `TRUNCATE`
-followed by `INSERT` statements. A single patch may contain both delta and state
+followed by `INSERT` statements. Column ordering follows the wire's
+`Delta.fields`/`Table.fields` rather than the hub config's declaration
+order, so values land in the columns the agent intended even if the hub
+config declares the same fields in a different order. Schema disagreements
+between the wire and the hub config (unknown field, mismatched PK, wrong
+type, illegal NULL) are rejected before any SQL is emitted. A single patch may contain both delta and state
 tables, and all statements are wrapped in a single transaction.
 Column types defined in the config control how values are formatted in the SQL
 output (quoting for `TEXT`, bare numbers for `NUMBER`, etc.).

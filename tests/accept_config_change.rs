@@ -91,10 +91,6 @@ fields = [
         patch.states.keys().collect::<Vec<_>>()
     );
 
-    // Verify field hashes are present for both tables.
-    assert!(patch.field_hashes.contains_key("items"));
-    assert!(patch.field_hashes.contains_key("logs"));
-
     // Verify SQL generation.
     let sql = sql::patch_to_sql(&config, &patch).unwrap().unwrap();
     assert!(sql.starts_with("BEGIN;\n"));
