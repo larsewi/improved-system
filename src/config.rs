@@ -304,43 +304,6 @@ impl TableConfig {
         }
         names
     }
-
-    /// Compute a SHA-1 hash over this table's shared-schema fields.
-    /// Fields are sorted alphabetically by name for order independence.
-    /// The hash covers: field name, sql_type, primary_key flag, and whether
-    /// a null sentinel is configured (but not the sentinel string itself).
-    ///
-    /// Sentinel strings are agent-local CSV parsing rules — different agents
-    /// feeding the same hub may legitimately use different strings (e.g. "NA"
-    /// vs ""), and the hub never sees them because the wire format carries
-    /// already-typed values. The *presence* of a null sentinel, however,
-    /// reflects whether the agent can emit `Value::Null` for the column,
-    /// which must agree with the hub's view of column nullability. The same
-    /// reasoning applies to the true/false sentinels, except their presence
-    /// doesn't change which `Value` variants reach the hub (always Boolean),
-    /// so they're omitted entirely.
-    pub fn field_hash(&self) -> String {
-        let mut sorted_fields: Vec<&FieldConfig> = self.fields.iter().collect();
-        sorted_fields.sort_by(|a, b| a.name.cmp(&b.name));
-
-        let mut data = Vec::new();
-        for field in sorted_fields {
-            data.extend_from_slice(field.name.as_bytes());
-            data.push(0);
-            // Normalize to uppercase so that case differences (e.g. "text"
-            // vs "TEXT") produce the same hash — SqlType::from_config is
-            // case-insensitive, so the hash should be too.
-            let normalized = field.sql_type.to_uppercase();
-            data.extend_from_slice(normalized.as_bytes());
-            data.push(0);
-            data.push(u8::from(field.primary_key));
-            data.push(0);
-            data.push(u8::from(field.null_sentinel.is_some()));
-            data.push(0);
-        }
-
-        crate::utils::compute_hash(&data)
-    }
 }
 
 impl Config {
@@ -573,89 +536,6 @@ mod tests {
         ]);
         // PKs in declaration order, then subsidiaries
         assert_eq!(config.ordered_field_names(), vec!["pk_b", "pk_a", "value"]);
-    }
-
-    #[test]
-    fn test_field_hash_deterministic() {
-        let config = make_table_config(vec![
-            make_field("id", "NUMBER", true, None),
-            make_field("name", "TEXT", false, Some("")),
-        ]);
-        assert_eq!(config.field_hash(), config.field_hash());
-    }
-
-    #[test]
-    fn test_field_hash_order_independent() {
-        let config_a = make_table_config(vec![
-            make_field("id", "NUMBER", true, None),
-            make_field("name", "TEXT", false, None),
-        ]);
-        let config_b = make_table_config(vec![
-            make_field("name", "TEXT", false, None),
-            make_field("id", "NUMBER", true, None),
-        ]);
-        assert_eq!(config_a.field_hash(), config_b.field_hash());
-    }
-
-    #[test]
-    fn test_field_hash_changes_on_type() {
-        let config_a = make_table_config(vec![make_field("id", "NUMBER", true, None)]);
-        let config_b = make_table_config(vec![make_field("id", "TEXT", true, None)]);
-        assert_ne!(config_a.field_hash(), config_b.field_hash());
-    }
-
-    #[test]
-    fn test_field_hash_changes_on_primary_key() {
-        let config_a = make_table_config(vec![
-            make_field("id", "TEXT", true, None),
-            make_field("name", "TEXT", false, None),
-        ]);
-        let config_b = make_table_config(vec![
-            make_field("id", "TEXT", true, None),
-            make_field("name", "TEXT", true, None),
-        ]);
-        assert_ne!(config_a.field_hash(), config_b.field_hash());
-    }
-
-    #[test]
-    fn test_field_hash_changes_on_nullability() {
-        let config_a = make_table_config(vec![
-            make_field("id", "TEXT", true, None),
-            make_field("val", "TEXT", false, None),
-        ]);
-        let config_b = make_table_config(vec![
-            make_field("id", "TEXT", true, None),
-            make_field("val", "TEXT", false, Some("")),
-        ]);
-        assert_ne!(config_a.field_hash(), config_b.field_hash());
-    }
-
-    #[test]
-    fn test_field_hash_ignores_null_sentinel_string() {
-        let config_a = make_table_config(vec![
-            make_field("id", "TEXT", true, None),
-            make_field("val", "TEXT", false, Some("NA")),
-        ]);
-        let config_b = make_table_config(vec![
-            make_field("id", "TEXT", true, None),
-            make_field("val", "TEXT", false, Some("")),
-        ]);
-        assert_eq!(config_a.field_hash(), config_b.field_hash());
-    }
-
-    #[test]
-    fn test_field_hash_ignores_boolean_sentinels() {
-        let mut field_a = make_field("flag", "BOOLEAN", false, None);
-        field_a.true_sentinel = Some("Y".to_string());
-        field_a.false_sentinel = Some("N".to_string());
-        let config_a = make_table_config(vec![make_field("id", "TEXT", true, None), field_a]);
-
-        let mut field_b = make_field("flag", "BOOLEAN", false, None);
-        field_b.true_sentinel = Some("1".to_string());
-        field_b.false_sentinel = Some("0".to_string());
-        let config_b = make_table_config(vec![make_field("id", "TEXT", true, None), field_b]);
-
-        assert_eq!(config_a.field_hash(), config_b.field_hash());
     }
 
     #[test]

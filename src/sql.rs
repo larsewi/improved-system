@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use anyhow::{Context, Result, anyhow, bail};
 
@@ -81,60 +81,96 @@ pub fn parse_typed_value(value: &str, sql_type: &SqlType) -> Result<Value> {
     }
 }
 
-/// Schema information for a single table, resolved from config.
-struct TableSchema {
-    /// All field names in order: primary keys first, then subsidiary.
-    field_names: Vec<String>,
+/// Schema information for a single table, derived from the wire-declared
+/// field list. Column ordering follows the wire (i.e. the agent's
+/// declaration order): primary-key columns first, then subsidiary columns.
+/// The hub honours that order when generating SQL so values land in the
+/// columns the agent intended, regardless of how the hub config declares
+/// them.
+struct TableSchema<'a> {
+    /// Field names in wire order: primary keys first, then subsidiary.
+    field_names: &'a [String],
     /// Number of primary key fields (the first `num_primary_keys` entries).
     num_primary_keys: usize,
+    /// Hub-config field metadata keyed by field name. Used at SQL-rendering
+    /// time to validate that each wire `Value`'s variant agrees with the
+    /// hub's declared `sql_type` and that nulls only appear in nullable
+    /// columns.
+    field_configs: HashMap<&'a str, &'a FieldConfig>,
 }
 
-impl TableSchema {
-    /// Resolve a table's schema from config, partitioning fields into
-    /// primary-key fields followed by subsidiary fields while preserving
-    /// declaration order within each group.
-    fn resolve(config: &Config, table_name: &str) -> Result<Self> {
+impl<'a> TableSchema<'a> {
+    /// Resolve a table's schema from a wire-declared field list (e.g.
+    /// `Delta.fields` or `Table.fields`), validating that the wire's view
+    /// of the schema agrees with the hub config.
+    ///
+    /// - Field count must match — a wire that omits a column would
+    ///   silently leave it at the DB's default value.
+    /// - Every wire name must be declared in the hub config — otherwise an
+    ///   agent could target columns the operator never authorized leech2
+    ///   to write to.
+    /// - The wire's primary-key prefix must equal the hub's primary-key
+    ///   set — otherwise an agent could choose which column scopes the
+    ///   WHERE clause on UPDATE/DELETE, allowing arbitrary-row targeting.
+    ///
+    /// `sql_type` and nullability drift is caught later, per cell, by
+    /// [`check_value_matches_field`].
+    fn resolve(wire_fields: &'a [String], config: &'a Config, table_name: &str) -> Result<Self> {
         let table_config = config
             .tables
             .get(table_name)
             .with_context(|| format!("table '{}' not found in config", table_name))?;
 
-        let field_config_by_name: HashMap<&str, &FieldConfig> = table_config
+        let field_configs: HashMap<&str, &FieldConfig> = table_config
             .fields
             .iter()
             .map(|field| (field.name.as_str(), field))
             .collect();
+        let hub_pk_set: HashSet<&str> = table_config
+            .fields
+            .iter()
+            .filter(|field| field.primary_key)
+            .map(|field| field.name.as_str())
+            .collect();
 
-        let primary_key_names = table_config.primary_key();
-        let all_field_names = table_config.field_names();
+        if wire_fields.len() != table_config.fields.len() {
+            bail!(
+                "wire field count {} disagrees with hub config field count {} for table '{}'",
+                wire_fields.len(),
+                table_config.fields.len(),
+                table_name
+            );
+        }
 
-        let mut field_names = Vec::new();
-
-        // Primary-key fields first.
-        for name in &primary_key_names {
-            if !field_config_by_name.contains_key(name.as_str()) {
+        for name in wire_fields {
+            if !field_configs.contains_key(name.as_str()) {
                 bail!(
-                    "primary key field '{}' not found in table '{}'",
+                    "wire field '{}' is not declared in hub config for table '{}'",
                     name,
                     table_name
                 );
             }
-            field_names.push(name.clone());
         }
 
-        // Then subsidiary fields, preserving declaration order.
-        for name in &all_field_names {
-            if !primary_key_names.contains(name) {
-                if !field_config_by_name.contains_key(name.as_str()) {
-                    bail!("field '{}' not found in table '{}'", name, table_name);
-                }
-                field_names.push(name.clone());
-            }
+        let num_primary_keys = hub_pk_set.len();
+        let wire_pk_prefix: HashSet<&str> = wire_fields
+            .iter()
+            .take(num_primary_keys)
+            .map(String::as_str)
+            .collect();
+        if wire_pk_prefix != hub_pk_set {
+            bail!(
+                "wire primary-key prefix {:?} disagrees with hub primary-key set {:?} for table '{}'",
+                wire_pk_prefix,
+                hub_pk_set,
+                table_name
+            );
         }
 
         Ok(TableSchema {
-            num_primary_keys: primary_key_names.len(),
-            field_names,
+            field_names: wire_fields,
+            num_primary_keys,
+            field_configs,
         })
     }
 
@@ -145,6 +181,48 @@ impl TableSchema {
     fn subsidiary_names(&self) -> &[String] {
         &self.field_names[self.num_primary_keys..]
     }
+
+    /// Look up the hub `FieldConfig` for a wire field name. The wire-field
+    /// validation in `resolve` guarantees every name in `field_names` has
+    /// a hub config entry, so a missing entry here is an internal bug.
+    fn field_config(&self, name: &str) -> Result<&FieldConfig> {
+        self.field_configs
+            .get(name)
+            .copied()
+            .with_context(|| format!("internal error: no hub field config for '{}'", name))
+    }
+}
+
+/// Validate that a wire `Value`'s variant agrees with the field's declared
+/// `sql_type`, and that `Null` only appears in nullable fields.
+fn check_value_matches_field(value: &Value, field: &FieldConfig) -> Result<()> {
+    if matches!(value, Value::Null) {
+        if field.null_sentinel.is_none() {
+            bail!(
+                "field '{}' is not nullable but wire value is NULL",
+                field.name
+            );
+        }
+        return Ok(());
+    }
+
+    let expected =
+        SqlType::from_config(&field.sql_type).with_context(|| format!("field '{}'", field.name))?;
+    let actual_ok = matches!(
+        (&expected, value),
+        (SqlType::Text, Value::Text(_))
+            | (SqlType::Number, Value::Number(_))
+            | (SqlType::Boolean, Value::Boolean(_))
+    );
+    if !actual_ok {
+        bail!(
+            "field '{}': wire value {} does not match declared type {:?}",
+            field.name,
+            value,
+            expected
+        );
+    }
+    Ok(())
 }
 
 /// A static field injected into all SQL output (resolved from proto).
@@ -231,10 +309,12 @@ fn format_row(
     let mut literals = Vec::with_capacity(key.len() + value.len());
     for (proto_value, name) in key.iter().zip(primary_keys) {
         let v = Value::try_from(proto_value).with_context(|| format!("field '{}'", name))?;
+        check_value_matches_field(&v, schema.field_config(name)?)?;
         literals.push(quote_literal(&v));
     }
     for (proto_value, name) in value.iter().zip(subsidiary_fields) {
         let v = Value::try_from(proto_value).with_context(|| format!("field '{}'", name))?;
+        check_value_matches_field(&v, schema.field_config(name)?)?;
         literals.push(quote_literal(&v));
     }
     Ok(literals)
@@ -325,6 +405,7 @@ fn format_update(
             )
         })?;
         let value = Value::try_from(proto_value).with_context(|| format!("field '{}'", name))?;
+        check_value_matches_field(&value, schema.field_config(name)?)?;
         set_parts.push(format!(
             "{} = {}",
             quote_identifier(name),
@@ -376,6 +457,7 @@ fn primary_key_where_clause(
     let mut where_parts = Vec::new();
     for (proto_value, name) in key.iter().zip(schema.primary_key_names()) {
         let value = Value::try_from(proto_value).with_context(|| format!("field '{}'", name))?;
+        check_value_matches_field(&value, schema.field_config(name)?)?;
         where_parts.push(format!(
             "{} = {}",
             quote_identifier(name),
@@ -397,7 +479,7 @@ fn delta_to_sql(
     injected_fields: &[InjectedField],
     out: &mut String,
 ) -> Result<()> {
-    let schema = TableSchema::resolve(config, table_name)?;
+    let schema = TableSchema::resolve(&delta.fields, config, table_name)?;
     let table = quote_identifier(table_name);
 
     emit_deletes(&delta.deletes, &schema, injected_fields, &table, out)
@@ -418,7 +500,7 @@ fn state_table_to_sql(
     injected_fields: &[InjectedField],
     out: &mut String,
 ) -> Result<()> {
-    let schema = TableSchema::resolve(config, table_name)?;
+    let schema = TableSchema::resolve(&table.fields, config, table_name)?;
     let quoted_table = quote_identifier(table_name);
 
     if injected_fields.is_empty() {
@@ -441,31 +523,6 @@ fn state_table_to_sql(
     Ok(())
 }
 
-/// Verify that a table's field hash in the patch matches the hub's config.
-fn check_field_hash(
-    config: &Config,
-    table_name: &str,
-    field_hashes: &HashMap<String, String>,
-) -> Result<()> {
-    let agent_hash = field_hashes
-        .get(table_name)
-        .with_context(|| format!("table '{}': missing field hash in patch", table_name))?;
-    let table_config = config
-        .tables
-        .get(table_name)
-        .with_context(|| format!("table '{}': not found in config", table_name))?;
-    let hub_hash = table_config.field_hash();
-    if agent_hash != &hub_hash {
-        bail!(
-            "table '{}': field hash mismatch (agent={}, hub={})",
-            table_name,
-            agent_hash,
-            hub_hash
-        );
-    }
-    Ok(())
-}
-
 /// Convert a decoded patch to SQL statements.
 ///
 /// Returns a SQL string wrapped in BEGIN/COMMIT.
@@ -485,12 +542,10 @@ pub fn patch_to_sql(config: &Config, patch: &ProtoPatch) -> Result<Option<String
     let mut sql = String::from("BEGIN;\n");
 
     for (table_name, delta) in &patch.deltas {
-        check_field_hash(config, table_name, &patch.field_hashes)?;
         delta_to_sql(config, table_name, delta, &injected_fields, &mut sql)?;
     }
 
     for (table_name, table) in &patch.states {
-        check_field_hash(config, table_name, &patch.field_hashes)?;
         state_table_to_sql(config, table_name, table, &injected_fields, &mut sql)?;
     }
 
@@ -501,7 +556,7 @@ pub fn patch_to_sql(config: &Config, patch: &ProtoPatch) -> Result<Option<String
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::TruncateConfig;
+    use crate::config::{FieldConfig, TruncateConfig};
     use crate::value::text_proto_values;
 
     fn dummy_config(tables: HashMap<String, crate::config::TableConfig>) -> Config {
@@ -537,11 +592,8 @@ mod tests {
 
     /// Build a ProtoPatch for tests. Defaults `head`, `created`,
     /// `injected_fields`, `num_blocks`, and `states`; the caller supplies
-    /// the deltas and field hashes that distinguish the test case.
-    fn dummy_patch(
-        deltas: HashMap<String, ProtoDelta>,
-        field_hashes: HashMap<String, String>,
-    ) -> ProtoPatch {
+    /// the deltas that distinguish the test case.
+    fn dummy_patch(deltas: HashMap<String, ProtoDelta>) -> ProtoPatch {
         ProtoPatch {
             head: "abc123".to_string(),
             created: None,
@@ -549,7 +601,6 @@ mod tests {
             num_blocks: 1,
             deltas,
             states: HashMap::new(),
-            field_hashes,
         }
     }
 
@@ -657,7 +708,7 @@ mod tests {
     }
 
     #[test]
-    fn test_patch_to_sql_rejects_mismatched_field_hash() {
+    fn test_patch_to_sql_accepts_well_formed_patch() {
         let table_config = dummy_table(&[("id", true)]);
         let config = dummy_config(HashMap::from([("test_table".to_string(), table_config)]));
 
@@ -666,51 +717,7 @@ mod tests {
             key: text_proto_values(&["1"]),
             value: vec![],
         });
-        let patch = dummy_patch(
-            HashMap::from([("test_table".to_string(), delta)]),
-            HashMap::from([("test_table".to_string(), "wrong_hash".to_string())]),
-        );
-
-        let err = patch_to_sql(&config, &patch).unwrap_err();
-        let msg = format!("{:#}", err);
-        assert!(msg.contains("field hash mismatch"), "got: {}", msg);
-    }
-
-    #[test]
-    fn test_patch_to_sql_rejects_missing_field_hash() {
-        let table_config = dummy_table(&[("id", true)]);
-        let config = dummy_config(HashMap::from([("test_table".to_string(), table_config)]));
-
-        let mut delta = dummy_delta(&["id"]);
-        delta.inserts.push(ProtoEntry {
-            key: text_proto_values(&["1"]),
-            value: vec![],
-        });
-        let patch = dummy_patch(
-            HashMap::from([("test_table".to_string(), delta)]),
-            HashMap::new(),
-        );
-
-        let err = patch_to_sql(&config, &patch).unwrap_err();
-        let msg = format!("{:#}", err);
-        assert!(msg.contains("missing field hash"), "got: {}", msg);
-    }
-
-    #[test]
-    fn test_patch_to_sql_accepts_matching_field_hash() {
-        let table_config = dummy_table(&[("id", true)]);
-        let correct_hash = table_config.field_hash();
-        let config = dummy_config(HashMap::from([("test_table".to_string(), table_config)]));
-
-        let mut delta = dummy_delta(&["id"]);
-        delta.inserts.push(ProtoEntry {
-            key: text_proto_values(&["1"]),
-            value: vec![],
-        });
-        let patch = dummy_patch(
-            HashMap::from([("test_table".to_string(), delta)]),
-            HashMap::from([("test_table".to_string(), correct_hash)]),
-        );
+        let patch = dummy_patch(HashMap::from([("test_table".to_string(), delta)]));
 
         let result = patch_to_sql(&config, &patch).unwrap().unwrap();
         assert!(result.contains("INSERT INTO"));
@@ -721,7 +728,6 @@ mod tests {
         // Two-column table: id (PK) + name (subsidiary). An update whose
         // changed_indices points at column 5 must bail rather than panic.
         let table_config = dummy_table(&[("id", true), ("name", false)]);
-        let correct_hash = table_config.field_hash();
         let config = dummy_config(HashMap::from([("test_table".to_string(), table_config)]));
 
         let mut delta = dummy_delta(&["id", "name"]);
@@ -731,13 +737,134 @@ mod tests {
             old_value: vec![],
             new_value: text_proto_values(&["x"]),
         });
-        let patch = dummy_patch(
-            HashMap::from([("test_table".to_string(), delta)]),
-            HashMap::from([("test_table".to_string(), correct_hash)]),
-        );
+        let patch = dummy_patch(HashMap::from([("test_table".to_string(), delta)]));
 
         let err = patch_to_sql(&config, &patch).unwrap_err();
         let msg = format!("{:#}", err);
         assert!(msg.contains("out of range"), "got: {}", msg);
+    }
+
+    /// When the agent and hub agree on field set, types, PK assignment, and
+    /// nullability but disagree on subsidiary declaration order, the hub
+    /// honours the wire's `delta.fields` order so each value lands in the
+    /// column the agent intended.
+    #[test]
+    fn test_subsidiary_order_drift_uses_wire_order_for_columns() {
+        // Hub config: subsidiary declaration order is [email, name].
+        let hub_config_table = dummy_table(&[("id", true), ("email", false), ("name", false)]);
+        let hub_config = dummy_config(HashMap::from([("users".to_string(), hub_config_table)]));
+
+        // Wire entry as the agent would have serialized it: subsidiary values
+        // laid out in the agent's declaration order, i.e. [name, email].
+        let mut delta = dummy_delta(&["id", "name", "email"]);
+        delta.inserts.push(ProtoEntry {
+            key: text_proto_values(&["1"]),
+            value: text_proto_values(&["Alice", "alice@example.com"]),
+        });
+
+        let patch = dummy_patch(HashMap::from([("users".to_string(), delta)]));
+
+        let sql = patch_to_sql(&hub_config, &patch).unwrap().unwrap();
+
+        // The hub emits columns in the wire's order, so 'Alice' lands in
+        // the name column and the email address lands in the email column.
+        assert!(
+            sql.contains("INSERT INTO \"users\" (\"id\", \"name\", \"email\") VALUES ('1', 'Alice', 'alice@example.com');"),
+            "expected wire-order SQL, got:\n{sql}"
+        );
+    }
+
+    #[test]
+    fn test_resolve_rejects_wire_field_not_in_config() {
+        // A malicious agent that passes the field-hash check could still
+        // try to target a column outside the configured schema set by
+        // putting an unknown name in `delta.fields`.
+        let hub_config_table = dummy_table(&[("id", true), ("name", false)]);
+        let hub_config = dummy_config(HashMap::from([("users".to_string(), hub_config_table)]));
+
+        let wire_fields = vec!["id".to_string(), "password_hash".to_string()];
+        let result = TableSchema::resolve(&wire_fields, &hub_config, "users");
+        let msg = format!("{:#}", result.err().unwrap());
+        assert!(msg.contains("not declared in hub config"), "got: {msg}");
+    }
+
+    #[test]
+    fn test_resolve_rejects_wire_pk_disagreement() {
+        // Hub: id is the sole PK. A malicious agent claims `email` is the
+        // PK so its UPDATE/DELETE WHERE clauses scope on email instead.
+        let hub_config_table = dummy_table(&[("id", true), ("email", false)]);
+        let hub_config = dummy_config(HashMap::from([("users".to_string(), hub_config_table)]));
+
+        let wire_fields = vec!["email".to_string(), "id".to_string()];
+        let result = TableSchema::resolve(&wire_fields, &hub_config, "users");
+        let msg = format!("{:#}", result.err().unwrap());
+        assert!(msg.contains("primary-key prefix"), "got: {msg}");
+    }
+
+    fn make_field(name: &str, sql_type: &str, nullable: bool) -> FieldConfig {
+        FieldConfig {
+            name: name.to_string(),
+            sql_type: sql_type.to_string(),
+            primary_key: false,
+            null_sentinel: if nullable { Some("".to_string()) } else { None },
+            true_sentinel: None,
+            false_sentinel: None,
+        }
+    }
+
+    #[test]
+    fn test_check_value_matches_field_accepts_correct_types() {
+        check_value_matches_field(
+            &Value::Text("hello".into()),
+            &make_field("name", "TEXT", false),
+        )
+        .unwrap();
+        check_value_matches_field(&Value::Number(2.5), &make_field("price", "NUMBER", false))
+            .unwrap();
+        check_value_matches_field(&Value::Boolean(true), &make_field("flag", "BOOLEAN", false))
+            .unwrap();
+    }
+
+    #[test]
+    fn test_check_value_matches_field_rejects_type_drift() {
+        // Wire sends a Number into a column the hub config declared TEXT.
+        let err =
+            check_value_matches_field(&Value::Number(42.0), &make_field("note", "TEXT", false))
+                .unwrap_err();
+        let msg = format!("{:#}", err);
+        assert!(msg.contains("does not match declared type"), "got: {msg}");
+    }
+
+    #[test]
+    fn test_check_value_matches_field_rejects_null_in_non_nullable() {
+        let err = check_value_matches_field(&Value::Null, &make_field("name", "TEXT", false))
+            .unwrap_err();
+        let msg = format!("{:#}", err);
+        assert!(msg.contains("not nullable"), "got: {msg}");
+    }
+
+    #[test]
+    fn test_check_value_matches_field_accepts_null_in_nullable() {
+        check_value_matches_field(&Value::Null, &make_field("name", "TEXT", true)).unwrap();
+    }
+
+    #[test]
+    fn test_patch_to_sql_rejects_wire_value_with_wrong_type() {
+        // Hub declares the subsidiary column as NUMBER. The wire passes the
+        // resolve checks, but the inserted value is a Text.
+        let mut table = dummy_table(&[("id", true), ("score", false)]);
+        table.fields[1].sql_type = "NUMBER".to_string();
+        let config = dummy_config(HashMap::from([("t".to_string(), table)]));
+
+        let mut delta = dummy_delta(&["id", "score"]);
+        delta.inserts.push(ProtoEntry {
+            key: text_proto_values(&["1"]),
+            value: text_proto_values(&["not-a-number"]),
+        });
+        let patch = dummy_patch(HashMap::from([("t".to_string(), delta)]));
+
+        let err = patch_to_sql(&config, &patch).unwrap_err();
+        let msg = format!("{:#}", err);
+        assert!(msg.contains("does not match declared type"), "got: {msg}");
     }
 }

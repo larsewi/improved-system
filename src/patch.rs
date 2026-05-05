@@ -246,12 +246,7 @@ fn try_consolidate(work_dir: &Path, head: &str, last_known: &str) -> Result<Cons
     Ok((created, num_blocks, result_deltas, result_states))
 }
 
-fn full_state_patch(
-    work_dir: &Path,
-    head: &str,
-    injected_fields: Vec<Field>,
-    field_hashes: HashMap<String, String>,
-) -> Result<Patch> {
+fn full_state_patch(work_dir: &Path, head: &str, injected_fields: Vec<Field>) -> Result<Patch> {
     let created = Block::load(work_dir, head)
         .ok()
         .and_then(|block| block.created);
@@ -263,7 +258,6 @@ fn full_state_patch(
         num_blocks: 0,
         deltas: HashMap::new(),
         states: state.tables,
-        field_hashes,
     };
     log::trace!("Built patch:\n{}", patch);
     Ok(patch)
@@ -282,12 +276,6 @@ impl Patch {
             injected_fields.push(Field::try_from(field_config)?);
         }
 
-        let field_hashes: HashMap<String, String> = config
-            .tables
-            .iter()
-            .map(|(name, table_config)| (name.clone(), table_config.field_hash()))
-            .collect();
-
         if head == GENESIS_HASH {
             let patch = Patch {
                 head,
@@ -296,7 +284,6 @@ impl Patch {
                 num_blocks: 0,
                 deltas: HashMap::new(),
                 states: HashMap::new(),
-                field_hashes,
             };
             log::trace!("Built patch:\n{}", patch);
             return Ok(patch);
@@ -309,14 +296,14 @@ impl Patch {
             Ok(hash) if hash != GENESIS_HASH => hash,
             Ok(_) => {
                 log::info!("Reference is genesis, producing full state patch");
-                return full_state_patch(work_dir, &head, injected_fields, field_hashes);
+                return full_state_patch(work_dir, &head, injected_fields);
             }
             Err(e) => {
                 log::warn!(
                     "Reference block not found, producing full state patch: {}",
                     e
                 );
-                return full_state_patch(work_dir, &head, injected_fields, field_hashes);
+                return full_state_patch(work_dir, &head, injected_fields);
             }
         };
 
@@ -325,7 +312,7 @@ impl Patch {
                 Ok(result) => result,
                 Err(e) => {
                     log::warn!("Consolidation failed, falling back to full state: {}", e);
-                    return full_state_patch(work_dir, &head, injected_fields, field_hashes);
+                    return full_state_patch(work_dir, &head, injected_fields);
                 }
             };
 
@@ -336,7 +323,6 @@ impl Patch {
             num_blocks,
             deltas,
             states,
-            field_hashes,
         };
 
         log::trace!("Built patch:\n{}", patch);
@@ -395,7 +381,6 @@ mod tests {
             num_blocks: 0,
             deltas: HashMap::new(),
             states: HashMap::new(),
-            field_hashes: HashMap::new(),
         }
     }
 
