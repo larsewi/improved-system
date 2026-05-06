@@ -9,6 +9,13 @@ use anyhow::{Context, Result, bail};
 
 use crate::value::ValueKind;
 
+/// Post-deserialize semantic checks for config structs (cross-field
+/// invariants, value ranges, etc.) that serde can't express on its own.
+/// Implementors `bail!` on failure.
+trait Validate {
+    fn validate(&self) -> Result<()>;
+}
+
 // Custom deserializer used via `#[serde(deserialize_with = ...)]`: reads the
 // field as a string and compiles it into a `Regex`, surfacing compile errors
 // as deserialization errors so an invalid pattern fails config loading.
@@ -66,6 +73,20 @@ impl Default for TruncateConfig {
     }
 }
 
+impl Validate for TruncateConfig {
+    fn validate(&self) -> Result<()> {
+        if let Some(max_blocks) = self.max_blocks
+            && max_blocks < 1
+        {
+            bail!("truncate.max-blocks must be >= 1");
+        }
+        if let Some(ref max_age) = self.max_age {
+            parse_duration(max_age).context("truncate.max-age")?;
+        }
+        Ok(())
+    }
+}
+
 /// Controls zstd compression of patch payloads.
 #[derive(Debug, Deserialize)]
 #[serde(default)]
@@ -106,6 +127,18 @@ impl Default for InjectedFieldConfig {
             value_kind: ValueKind::Text,
             value: String::new(),
         }
+    }
+}
+
+impl Validate for InjectedFieldConfig {
+    fn validate(&self) -> Result<()> {
+        if self.name.is_empty() {
+            bail!("name must not be empty");
+        }
+        if self.value.is_empty() {
+            bail!("'{}': value must not be empty", self.name);
+        }
+        Ok(())
     }
 }
 
@@ -292,7 +325,60 @@ pub struct TableConfig {
     pub fields: Vec<FieldConfig>,
 }
 
-impl TableConfig {
+impl Validate for FieldConfig {
+    fn validate(&self) -> Result<()> {
+        if self.name.is_empty() {
+            bail!("field name must not be empty");
+        }
+
+        if self.primary_key && self.null_sentinel.is_some() {
+            bail!(
+                "primary-key field '{}' must not have a null sentinel",
+                self.name
+            );
+        }
+
+        if (self.true_sentinel.is_some() || self.false_sentinel.is_some())
+            && self.value_kind != ValueKind::Boolean
+        {
+            bail!(
+                "field '{}': 'true' and 'false' sentinels are only valid on BOOLEAN fields",
+                self.name
+            );
+        }
+
+        if let (Some(t), Some(f)) = (&self.true_sentinel, &self.false_sentinel)
+            && t == f
+        {
+            bail!(
+                "field '{}': 'true' and 'false' sentinels must differ",
+                self.name
+            );
+        }
+
+        if let (Some(t), Some(n)) = (&self.true_sentinel, &self.null_sentinel)
+            && t == n
+        {
+            bail!(
+                "field '{}': 'true' and 'null' sentinels must differ",
+                self.name
+            );
+        }
+
+        if let (Some(f), Some(n)) = (&self.false_sentinel, &self.null_sentinel)
+            && f == n
+        {
+            bail!(
+                "field '{}': 'false' and 'null' sentinels must differ",
+                self.name
+            );
+        }
+
+        Ok(())
+    }
+}
+
+impl Validate for TableConfig {
     fn validate(&self) -> Result<()> {
         let num_primary_keys = self.fields.iter().filter(|field| field.primary_key).count();
         if num_primary_keys == 0 {
@@ -301,55 +387,17 @@ impl TableConfig {
 
         let mut seen = HashSet::new();
         for field in &self.fields {
-            if field.name.is_empty() {
-                bail!("field name must not be empty");
-            }
+            field.validate()?;
             if !seen.insert(&field.name) {
                 bail!("found duplicate field name '{}'", field.name);
-            }
-            if field.primary_key && field.null_sentinel.is_some() {
-                bail!(
-                    "primary-key field '{}' must not have a null sentinel",
-                    field.name
-                );
-            }
-            if (field.true_sentinel.is_some() || field.false_sentinel.is_some())
-                && field.value_kind != ValueKind::Boolean
-            {
-                bail!(
-                    "field '{}': 'true' and 'false' sentinels are only valid on BOOLEAN fields",
-                    field.name
-                );
-            }
-            if let (Some(t), Some(f)) = (&field.true_sentinel, &field.false_sentinel)
-                && t == f
-            {
-                bail!(
-                    "field '{}': 'true' and 'false' sentinels must differ",
-                    field.name
-                );
-            }
-            if let (Some(t), Some(n)) = (&field.true_sentinel, &field.null_sentinel)
-                && t == n
-            {
-                bail!(
-                    "field '{}': 'true' and 'null' sentinels must differ",
-                    field.name
-                );
-            }
-            if let (Some(f), Some(n)) = (&field.false_sentinel, &field.null_sentinel)
-                && f == n
-            {
-                bail!(
-                    "field '{}': 'false' and 'null' sentinels must differ",
-                    field.name
-                );
             }
         }
 
         Ok(())
     }
+}
 
+impl TableConfig {
     pub fn field_names(&self) -> Vec<String> {
         self.fields.iter().map(|field| field.name.clone()).collect()
     }
@@ -401,29 +449,17 @@ impl Config {
         };
         config.work_dir = work_dir.to_path_buf();
 
-        // Validate each table: at least one primary key, no duplicate field
-        // names, and no null sentinels on primary-key fields.
         for (name, table) in &config.tables {
             table
                 .validate()
                 .with_context(|| format!("table '{}'", name))?;
         }
 
-        // Validate injected fields: name and value are non-empty, and no
-        // duplicate names. Type validity is enforced by the `value_kind`
-        // deserializer.
         let mut injected_names = HashSet::new();
         for (index, field) in config.injected_fields.iter().enumerate() {
-            if field.name.is_empty() {
-                bail!("injected-fields[{}]: name must not be empty", index);
-            }
-            if field.value.is_empty() {
-                bail!(
-                    "injected-fields[{}] '{}': value must not be empty",
-                    index,
-                    field.name
-                );
-            }
+            field
+                .validate()
+                .with_context(|| format!("injected-fields[{}]", index))?;
             if !injected_names.insert(&field.name) {
                 bail!(
                     "injected-fields[{}]: duplicate field name '{}'",
@@ -433,16 +469,7 @@ impl Config {
             }
         }
 
-        // Validate truncation: max-blocks >= 1 and max-age is a valid
-        // duration string (e.g. "30s", "12h", "7d").
-        if let Some(max_blocks) = config.truncate.max_blocks
-            && max_blocks < 1
-        {
-            bail!("truncate.max-blocks must be >= 1");
-        }
-        if let Some(ref max_age) = config.truncate.max_age {
-            parse_duration(max_age).context("truncate.max-age")?;
-        }
+        config.truncate.validate()?;
 
         log::info!("Initialized config with {} tables", config.tables.len());
         Ok(config)
