@@ -209,6 +209,15 @@ pub struct FilterConfig {
     pub exclude: Vec<FilterRule>,
 }
 
+impl Validate for FilterConfig {
+    fn validate(&self) -> Result<()> {
+        if self.max_field_length == Some(0) {
+            bail!("filters.max-field-length must be >= 1");
+        }
+        Ok(())
+    }
+}
+
 /// Look up the value whose field name is `target`. Returns `None` if
 /// `target` isn't in `field_names` or if `values` is shorter than
 /// `field_names`.
@@ -500,6 +509,7 @@ impl Validate for Config {
 
         self.truncate.validate()?;
         self.compression.validate()?;
+        self.filters.validate()?;
 
         Ok(())
     }
