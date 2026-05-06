@@ -176,4 +176,14 @@ mod tests {
         assert_eq!(header.parent, block.parent);
         assert_eq!(header.created, block.created);
     }
+
+    #[test]
+    fn test_block_display() {
+        let block = dummy_block();
+        let expected = "Block:
+  Parent: deadbeef
+  Created: 2023-11-14 22:13:20 UTC
+  Payload (0 tables):";
+        assert_eq!(block.to_string(), expected);
+    }
 }
