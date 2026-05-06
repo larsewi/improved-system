@@ -136,14 +136,12 @@ fn check_value_matches_field(value: &Value, field: &FieldConfig) -> Result<()> {
         return Ok(());
     }
 
-    let expected = ValueKind::from_config(&field.sql_type)
-        .with_context(|| format!("field '{}'", field.name))?;
-    if value.kind() != expected {
+    if value.kind() != field.value_kind {
         bail!(
             "field '{}': wire value {} does not match declared type {:?}",
             field.name,
             value,
-            expected
+            field.value_kind
         );
     }
     Ok(())
@@ -504,11 +502,8 @@ mod tests {
                 .iter()
                 .map(|(name, primary_key)| FieldConfig {
                     name: name.to_string(),
-                    sql_type: "TEXT".to_string(),
                     primary_key: *primary_key,
-                    null_sentinel: None,
-                    true_sentinel: None,
-                    false_sentinel: None,
+                    ..Default::default()
                 })
                 .collect(),
         }
@@ -671,14 +666,12 @@ mod tests {
         assert!(msg.contains("primary-key prefix"), "got: {msg}");
     }
 
-    fn make_field(name: &str, sql_type: &str, nullable: bool) -> FieldConfig {
+    fn make_field(name: &str, value_kind: ValueKind, nullable: bool) -> FieldConfig {
         FieldConfig {
             name: name.to_string(),
-            sql_type: sql_type.to_string(),
-            primary_key: false,
+            value_kind,
             null_sentinel: if nullable { Some("".to_string()) } else { None },
-            true_sentinel: None,
-            false_sentinel: None,
+            ..Default::default()
         }
     }
 
@@ -686,36 +679,46 @@ mod tests {
     fn test_check_value_matches_field_accepts_correct_types() {
         check_value_matches_field(
             &Value::Text("hello".into()),
-            &make_field("name", "TEXT", false),
+            &make_field("name", ValueKind::Text, false),
         )
         .unwrap();
-        check_value_matches_field(&Value::Number(2.5), &make_field("price", "NUMBER", false))
-            .unwrap();
-        check_value_matches_field(&Value::Boolean(true), &make_field("flag", "BOOLEAN", false))
-            .unwrap();
+        check_value_matches_field(
+            &Value::Number(2.5),
+            &make_field("price", ValueKind::Number, false),
+        )
+        .unwrap();
+        check_value_matches_field(
+            &Value::Boolean(true),
+            &make_field("flag", ValueKind::Boolean, false),
+        )
+        .unwrap();
     }
 
     #[test]
     fn test_check_value_matches_field_rejects_type_drift() {
         // Wire sends a Number into a column the hub config declared TEXT.
-        let err =
-            check_value_matches_field(&Value::Number(42.0), &make_field("note", "TEXT", false))
-                .unwrap_err();
+        let err = check_value_matches_field(
+            &Value::Number(42.0),
+            &make_field("note", ValueKind::Text, false),
+        )
+        .unwrap_err();
         let msg = format!("{:#}", err);
         assert!(msg.contains("does not match declared type"), "got: {msg}");
     }
 
     #[test]
     fn test_check_value_matches_field_rejects_null_in_non_nullable() {
-        let err = check_value_matches_field(&Value::Null, &make_field("name", "TEXT", false))
-            .unwrap_err();
+        let err =
+            check_value_matches_field(&Value::Null, &make_field("name", ValueKind::Text, false))
+                .unwrap_err();
         let msg = format!("{:#}", err);
         assert!(msg.contains("not nullable"), "got: {msg}");
     }
 
     #[test]
     fn test_check_value_matches_field_accepts_null_in_nullable() {
-        check_value_matches_field(&Value::Null, &make_field("name", "TEXT", true)).unwrap();
+        check_value_matches_field(&Value::Null, &make_field("name", ValueKind::Text, true))
+            .unwrap();
     }
 
     #[test]
@@ -723,7 +726,7 @@ mod tests {
         // Hub declares the subsidiary column as NUMBER. The wire passes the
         // resolve checks, but the inserted value is a Text.
         let mut table = dummy_table(&[("id", true), ("score", false)]);
-        table.fields[1].sql_type = "NUMBER".to_string();
+        table.fields[1].value_kind = ValueKind::Number;
         let config = dummy_config(HashMap::from([("t".to_string(), table)]));
 
         let mut delta = dummy_delta(&["id", "score"]);

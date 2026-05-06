@@ -5,7 +5,7 @@ use std::time::SystemTime;
 use anyhow::Result;
 
 use crate::block::Block;
-use crate::config::{Config, parse_duration};
+use crate::config::Config;
 use crate::head;
 use crate::reported;
 use crate::storage;
@@ -148,10 +148,10 @@ fn truncate_chain(config: &Config, chain: &[ChainEntry]) -> Result<()> {
     };
 
     let max_blocks = config.truncate.max_blocks.map(|n| n as usize);
-    let max_age_cutoff = match &config.truncate.max_age {
-        Some(max_age) => Some(SystemTime::now() - parse_duration(max_age)?),
-        None => None,
-    };
+    let max_age_cutoff = config
+        .truncate
+        .max_age
+        .map(|max_age| SystemTime::now() - max_age);
 
     let mut removed = 0;
     for (i, entry) in chain.iter().enumerate() {

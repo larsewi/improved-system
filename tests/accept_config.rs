@@ -152,10 +152,10 @@ fields = [
     );
 
     let result = Config::load(tmp.path());
-    assert!(result.is_err());
+    let err = format!("{:#}", result.unwrap_err());
     assert!(
-        result.unwrap_err().to_string().contains("max-age"),
-        "should report invalid max-age"
+        err.contains("max-age"),
+        "should report invalid max-age: {err}"
     );
 }
 
@@ -216,4 +216,259 @@ fn test_json_config_file() {
     assert_eq!(common::count_sql(&sql, "INSERT INTO"), 2);
 
     common::assert_wire_roundtrip(&config, &patch);
+}
+
+#[test]
+fn test_empty_tables_map_rejected() {
+    common::init_logging();
+    let tmp = tempfile::tempdir().unwrap();
+    common::write_config(tmp.path(), "config.toml", "[tables]\n");
+
+    let err = format!("{:#}", Config::load(tmp.path()).unwrap_err());
+    assert!(
+        err.contains("at least one table"),
+        "should report empty tables: {err}"
+    );
+}
+
+#[test]
+fn test_injected_field_collides_with_table_column() {
+    common::init_logging();
+    let tmp = tempfile::tempdir().unwrap();
+    common::write_config(
+        tmp.path(),
+        "config.toml",
+        r#"
+[[injected-fields]]
+name = "host"
+type = "TEXT"
+value = "agent-1"
+
+[tables.users]
+source = "users.csv"
+fields = [
+    { name = "id", type = "NUMBER", primary-key = true },
+    { name = "host", type = "TEXT" },
+]
+"#,
+    );
+
+    let err = format!("{:#}", Config::load(tmp.path()).unwrap_err());
+    assert!(
+        err.contains("collides"),
+        "should report collision with table column: {err}"
+    );
+}
+
+#[test]
+fn test_filter_rule_references_unknown_table() {
+    common::init_logging();
+    let tmp = tempfile::tempdir().unwrap();
+    common::write_config(
+        tmp.path(),
+        "config.toml",
+        r#"
+[[filters.exclude]]
+tables = ["nonexistent"]
+field = "name"
+regex = "^x$"
+
+[tables.users]
+source = "users.csv"
+fields = [
+    { name = "id", type = "NUMBER", primary-key = true },
+    { name = "name", type = "TEXT" },
+]
+"#,
+    );
+
+    let err = format!("{:#}", Config::load(tmp.path()).unwrap_err());
+    assert!(
+        err.contains("unknown table 'nonexistent'"),
+        "should report unknown table: {err}"
+    );
+}
+
+#[test]
+fn test_empty_table_source_rejected() {
+    common::init_logging();
+    let tmp = tempfile::tempdir().unwrap();
+    common::write_config(
+        tmp.path(),
+        "config.toml",
+        r#"
+[tables.users]
+source = ""
+fields = [
+    { name = "id", type = "NUMBER", primary-key = true },
+    { name = "name", type = "TEXT" },
+]
+"#,
+    );
+
+    let err = format!("{:#}", Config::load(tmp.path()).unwrap_err());
+    assert!(
+        err.contains("source must not be empty"),
+        "should report empty source: {err}"
+    );
+}
+
+#[test]
+fn test_injected_field_empty_name_rejected() {
+    common::init_logging();
+    let tmp = tempfile::tempdir().unwrap();
+    common::write_config(
+        tmp.path(),
+        "config.toml",
+        r#"
+[[injected-fields]]
+name = ""
+value = "x"
+
+[tables.users]
+source = "users.csv"
+fields = [
+    { name = "id", type = "NUMBER", primary-key = true },
+    { name = "name", type = "TEXT" },
+]
+"#,
+    );
+
+    let err = format!("{:#}", Config::load(tmp.path()).unwrap_err());
+    assert!(
+        err.contains("name must not be empty"),
+        "should report empty name: {err}"
+    );
+}
+
+#[test]
+fn test_injected_field_empty_value_rejected() {
+    common::init_logging();
+    let tmp = tempfile::tempdir().unwrap();
+    common::write_config(
+        tmp.path(),
+        "config.toml",
+        r#"
+[[injected-fields]]
+name = "host"
+value = ""
+
+[tables.users]
+source = "users.csv"
+fields = [
+    { name = "id", type = "NUMBER", primary-key = true },
+    { name = "name", type = "TEXT" },
+]
+"#,
+    );
+
+    let err = format!("{:#}", Config::load(tmp.path()).unwrap_err());
+    assert!(
+        err.contains("value must not be empty"),
+        "should report empty value: {err}"
+    );
+}
+
+#[test]
+fn test_injected_field_value_does_not_parse() {
+    common::init_logging();
+    let tmp = tempfile::tempdir().unwrap();
+    common::write_config(
+        tmp.path(),
+        "config.toml",
+        r#"
+[[injected-fields]]
+name = "count"
+type = "NUMBER"
+value = "abc"
+
+[tables.users]
+source = "users.csv"
+fields = [
+    { name = "id", type = "NUMBER", primary-key = true },
+    { name = "name", type = "TEXT" },
+]
+"#,
+    );
+
+    let err = format!("{:#}", Config::load(tmp.path()).unwrap_err());
+    assert!(
+        err.contains("invalid number"),
+        "should report unparseable value: {err}"
+    );
+}
+
+#[test]
+fn test_field_empty_name_rejected() {
+    common::init_logging();
+    let tmp = tempfile::tempdir().unwrap();
+    common::write_config(
+        tmp.path(),
+        "config.toml",
+        r#"
+[tables.users]
+source = "users.csv"
+fields = [
+    { name = "id", type = "NUMBER", primary-key = true },
+    { type = "TEXT" },
+]
+"#,
+    );
+
+    let err = format!("{:#}", Config::load(tmp.path()).unwrap_err());
+    assert!(
+        err.contains("field name must not be empty"),
+        "should report empty field name: {err}"
+    );
+}
+
+#[test]
+fn test_field_unknown_type_rejected() {
+    common::init_logging();
+    let tmp = tempfile::tempdir().unwrap();
+    common::write_config(
+        tmp.path(),
+        "config.toml",
+        r#"
+[tables.users]
+source = "users.csv"
+fields = [
+    { name = "id", type = "NUMBER", primary-key = true },
+    { name = "name", type = "FLOAT" },
+]
+"#,
+    );
+
+    let err = format!("{:#}", Config::load(tmp.path()).unwrap_err());
+    assert!(
+        err.contains("unknown field type 'FLOAT'"),
+        "should report unknown type: {err}"
+    );
+}
+
+#[test]
+fn test_compression_level_out_of_range() {
+    common::init_logging();
+    let tmp = tempfile::tempdir().unwrap();
+    common::write_config(
+        tmp.path(),
+        "config.toml",
+        r#"
+[compression]
+level = 999
+
+[tables.users]
+source = "users.csv"
+fields = [
+    { name = "id", type = "NUMBER", primary-key = true },
+    { name = "name", type = "TEXT" },
+]
+"#,
+    );
+
+    let err = format!("{:#}", Config::load(tmp.path()).unwrap_err());
+    assert!(
+        err.contains("compression.level"),
+        "should report out-of-range compression.level: {err}"
+    );
 }

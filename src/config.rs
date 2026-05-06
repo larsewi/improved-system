@@ -7,8 +7,19 @@ use std::time::Duration;
 
 use anyhow::{Context, Result, bail};
 
-use crate::value::ValueKind;
+use crate::utils::parse_duration;
+use crate::value::{ValueKind, parse_typed_value};
 
+/// Post-deserialize semantic checks for config structs (cross-field
+/// invariants, value ranges, etc.) that serde can't express on its own.
+/// Implementors `bail!` on failure.
+trait Validate {
+    fn validate(&self) -> Result<()>;
+}
+
+// Custom deserializer used via `#[serde(deserialize_with = ...)]`: reads the
+// field as a string and compiles it into a `Regex`, surfacing compile errors
+// as deserialization errors so an invalid pattern fails config loading.
 fn deserialize_regex<'de, D>(deserializer: D) -> Result<Regex, D::Error>
 where
     D: Deserializer<'de>,
@@ -17,25 +28,52 @@ where
     Regex::new(&pattern).map_err(serde::de::Error::custom)
 }
 
+// Custom deserializer for ValueKind: reads the field as a string and parses it
+// via `ValueKind::from_config`, surfacing unknown types as deserialization
+// errors so invalid `type` values fail config loading.
+fn deserialize_value_kind<'de, D>(deserializer: D) -> Result<ValueKind, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let type_str = String::deserialize(deserializer)?;
+    ValueKind::from_config(&type_str).map_err(serde::de::Error::custom)
+}
+
+// Custom deserializer for an optional Duration: reads the field as an
+// optional string and parses it via `parse_duration`, surfacing parse errors
+// as deserialization errors so an invalid duration fails config loading.
+fn deserialize_duration<'de, D>(deserializer: D) -> Result<Option<Duration>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value: Option<String> = Option::deserialize(deserializer)?;
+    value
+        .map(|s| parse_duration(&s).map_err(serde::de::Error::custom))
+        .transpose()
+}
+
+// Config file formats we accept.
 enum ConfigFormat {
     Toml,
     Json,
 }
 
+/// Controls block cleanup / truncation of the block chain.
 #[derive(Debug, Deserialize)]
+#[serde(default)]
 pub struct TruncateConfig {
+    /// Keep at most this many blocks; older ones are removed. `None` disables the limit.
     #[serde(rename = "max-blocks")]
     pub max_blocks: Option<u32>,
-    #[serde(rename = "max-age")]
-    pub max_age: Option<String>,
-    #[serde(default = "default_true", rename = "remove-orphans")]
+    /// Drop blocks whose `created` timestamp is older than this duration (e.g. `"30d"`). `None` disables the limit.
+    #[serde(rename = "max-age", deserialize_with = "deserialize_duration")]
+    pub max_age: Option<Duration>,
+    /// When true, also delete blocks no longer referenced by any retained block.
+    #[serde(rename = "remove-orphans")]
     pub remove_orphans: bool,
-    #[serde(default = "default_true", rename = "truncate-reported")]
+    /// When true, blocks already reported to the consumer are eligible for removal.
+    #[serde(rename = "truncate-reported")]
     pub truncate_reported: bool,
-}
-
-fn default_true() -> bool {
-    true
 }
 
 impl Default for TruncateConfig {
@@ -49,10 +87,24 @@ impl Default for TruncateConfig {
     }
 }
 
+impl Validate for TruncateConfig {
+    fn validate(&self) -> Result<()> {
+        if let Some(max_blocks) = self.max_blocks
+            && max_blocks < 1
+        {
+            bail!("truncate.max-blocks must be >= 1");
+        }
+        Ok(())
+    }
+}
+
+/// Controls zstd compression of patch payloads.
 #[derive(Debug, Deserialize)]
 #[serde(default)]
 pub struct CompressionConfig {
+    /// When true, patch payloads are zstd-compressed before being written.
     pub enable: bool,
+    /// Zstd compression level passed to `zstd::encode_all`. `0` selects the zstd default.
     pub level: i32,
 }
 
@@ -65,26 +117,68 @@ impl Default for CompressionConfig {
     }
 }
 
-#[derive(Debug, Deserialize)]
-pub struct InjectedFieldConfig {
-    pub name: String,
-    #[serde(rename = "type", default = "default_sql_type")]
-    pub sql_type: String,
-    pub value: String,
-}
-
-impl InjectedFieldConfig {
+impl Validate for CompressionConfig {
     fn validate(&self) -> Result<()> {
-        ValueKind::from_config(&self.sql_type).context("invalid type")?;
+        let range = zstd::compression_level_range();
+        if self.level != 0 && !range.contains(&self.level) {
+            bail!(
+                "compression.level {} is outside the supported zstd range {}..={}",
+                self.level,
+                range.start(),
+                range.end()
+            );
+        }
         Ok(())
     }
 }
 
+/// A static field added to every generated SQL row (e.g. a `host` column
+/// identifying which agent produced the data).
+#[derive(Debug, Deserialize)]
+#[serde(default)]
+pub struct InjectedFieldConfig {
+    /// Column name in the target database.
+    pub name: String,
+    /// Value type; one of `TEXT`, `NUMBER`, or `BOOLEAN`.
+    #[serde(rename = "type", deserialize_with = "deserialize_value_kind")]
+    pub value_kind: ValueKind,
+    /// The static value written into the column for every row.
+    pub value: String,
+}
+
+impl Default for InjectedFieldConfig {
+    fn default() -> Self {
+        Self {
+            name: String::new(),
+            value_kind: ValueKind::Text,
+            value: String::new(),
+        }
+    }
+}
+
+impl Validate for InjectedFieldConfig {
+    fn validate(&self) -> Result<()> {
+        if self.name.is_empty() {
+            bail!("name must not be empty");
+        }
+        if self.value.is_empty() {
+            bail!("'{}': value must not be empty", self.name);
+        }
+        parse_typed_value(&self.value, self.value_kind)
+            .with_context(|| format!("'{}'", self.name))?;
+        Ok(())
+    }
+}
+
+/// Rules to include/exclude records in tables.
 #[derive(Debug, Deserialize)]
 pub struct FilterRule {
+    /// Tables this rule applies to. Empty means all tables.
     #[serde(default)]
     pub tables: Vec<String>,
+    /// Name of the field whose value the regex is matched against.
     pub field: String,
+    /// Pattern matched against the field value. Unanchored by default.
     #[serde(deserialize_with = "deserialize_regex")]
     pub regex: Regex,
 }
@@ -97,14 +191,31 @@ impl FilterRule {
     }
 }
 
+/// Drops records at CSV load time so they never enter state, deltas, or SQL
+/// output.
 #[derive(Debug, Default, Deserialize)]
 pub struct FilterConfig {
+    /// Drop records where any field value exceeds this character length.
+    /// `None` disables the limit.
     #[serde(rename = "max-field-length")]
     pub max_field_length: Option<usize>,
+    /// Whitelist rules. When any include rule applies to a table, a record is
+    /// kept only if at least one rule matches.
     #[serde(default)]
     pub include: Vec<FilterRule>,
+    /// Blacklist rules. Records matching any applicable exclude rule are
+    /// dropped. Exclude wins on overlap.
     #[serde(default)]
     pub exclude: Vec<FilterRule>,
+}
+
+impl Validate for FilterConfig {
+    fn validate(&self) -> Result<()> {
+        if self.max_field_length == Some(0) {
+            bail!("filters.max-field-length must be >= 1");
+        }
+        Ok(())
+    }
 }
 
 /// Look up the value whose field name is `target`. Returns `None` if
@@ -139,6 +250,7 @@ impl FilterConfig {
                 }
             }
         }
+
         let mut has_applicable_include = false;
         let mut any_include_matched = false;
         for include in &self.include {
@@ -167,12 +279,10 @@ impl FilterConfig {
                 // Rule does not apply for this table
                 continue;
             }
-
             let Some(value) = find_field_value(field_names, values, &exclude.field) else {
                 // Field does not exist in table
                 continue;
             };
-
             if exclude.regex.is_match(value) {
                 return Some(format!("field '{}' matches exclude rule", exclude.field));
             }
@@ -181,50 +291,141 @@ impl FilterConfig {
     }
 }
 
+/// Top-level configuration loaded from `config.toml` or `config.json` in the
+/// work directory.
 #[derive(Debug, Deserialize)]
 pub struct Config {
+    /// Directory the config was loaded from; populated by `Config::load`, not
+    /// deserialized.
     #[serde(skip)]
     pub work_dir: PathBuf,
+    /// Static fields added to every generated SQL row.
     #[serde(default, rename = "injected-fields")]
     pub injected_fields: Vec<InjectedFieldConfig>,
+    /// Zstd compression settings for patch payloads.
     #[serde(default)]
     pub compression: CompressionConfig,
+    /// Per-table source-file and field schemas, keyed by table name.
     pub tables: HashMap<String, TableConfig>,
+    /// Block chain truncation policy.
     #[serde(default)]
     pub truncate: TruncateConfig,
+    /// Include/exclude rules applied at CSV load time.
     #[serde(default)]
     pub filters: FilterConfig,
 }
 
+/// One column in a table entry.
 #[derive(Debug, Deserialize)]
+#[serde(default)]
 pub struct FieldConfig {
+    /// Column name. Matches a CSV header when `header = true`; otherwise
+    /// only used as the SQL column name.
     pub name: String,
-    #[serde(rename = "type", default = "default_sql_type")]
-    pub sql_type: String,
-    #[serde(rename = "primary-key", default)]
+    /// Value type; one of `TEXT`, `NUMBER`, or `BOOLEAN`.
+    #[serde(rename = "type", deserialize_with = "deserialize_value_kind")]
+    pub value_kind: ValueKind,
+    /// When true, this field is part of the table's composite primary key.
+    #[serde(rename = "primary-key")]
     pub primary_key: bool,
-    #[serde(default, rename = "null")]
+    /// CSV string treated as SQL `NULL`. Not allowed on primary-key fields.
+    #[serde(rename = "null")]
     pub null_sentinel: Option<String>,
-    #[serde(default, rename = "true")]
+    /// CSV string treated as boolean true (BOOLEAN fields only). Disables the
+    /// default `"true"`.
+    #[serde(rename = "true")]
     pub true_sentinel: Option<String>,
-    #[serde(default, rename = "false")]
+    /// CSV string treated as boolean false (BOOLEAN fields only). Disables the
+    /// default `"false"`.
+    #[serde(rename = "false")]
     pub false_sentinel: Option<String>,
 }
 
-fn default_sql_type() -> String {
-    "TEXT".to_string()
+impl Default for FieldConfig {
+    fn default() -> Self {
+        Self {
+            name: String::new(),
+            value_kind: ValueKind::Text,
+            primary_key: false,
+            null_sentinel: None,
+            true_sentinel: None,
+            false_sentinel: None,
+        }
+    }
 }
 
+/// Configure where the table CSV lives and how its columns map to SQL.
 #[derive(Debug, Deserialize)]
 pub struct TableConfig {
+    /// CSV file path. Absolute paths are used as-is; relative paths are
+    /// resolved against the work directory.
     pub source: String,
+    /// When true, the first CSV row is a header used to match columns by name;
+    /// when false, columns are matched by position.
     #[serde(default)]
     pub header: bool,
+    /// Column definitions.
     pub fields: Vec<FieldConfig>,
 }
 
-impl TableConfig {
+impl Validate for FieldConfig {
     fn validate(&self) -> Result<()> {
+        if self.name.is_empty() {
+            bail!("field name must not be empty");
+        }
+
+        if self.primary_key && self.null_sentinel.is_some() {
+            bail!(
+                "primary-key field '{}' must not have a null sentinel",
+                self.name
+            );
+        }
+
+        if (self.true_sentinel.is_some() || self.false_sentinel.is_some())
+            && self.value_kind != ValueKind::Boolean
+        {
+            bail!(
+                "field '{}': 'true' and 'false' sentinels are only valid on BOOLEAN fields",
+                self.name
+            );
+        }
+
+        if let (Some(t), Some(f)) = (&self.true_sentinel, &self.false_sentinel)
+            && t == f
+        {
+            bail!(
+                "field '{}': 'true' and 'false' sentinels must differ",
+                self.name
+            );
+        }
+
+        if let (Some(t), Some(n)) = (&self.true_sentinel, &self.null_sentinel)
+            && t == n
+        {
+            bail!(
+                "field '{}': 'true' and 'null' sentinels must differ",
+                self.name
+            );
+        }
+
+        if let (Some(f), Some(n)) = (&self.false_sentinel, &self.null_sentinel)
+            && f == n
+        {
+            bail!(
+                "field '{}': 'false' and 'null' sentinels must differ",
+                self.name
+            );
+        }
+
+        Ok(())
+    }
+}
+
+impl Validate for TableConfig {
+    fn validate(&self) -> Result<()> {
+        if self.source.is_empty() {
+            bail!("source must not be empty");
+        }
         let num_primary_keys = self.fields.iter().filter(|field| field.primary_key).count();
         if num_primary_keys == 0 {
             bail!("at least one field must be marked as primary-key");
@@ -232,54 +433,17 @@ impl TableConfig {
 
         let mut seen = HashSet::new();
         for field in &self.fields {
+            field.validate()?;
             if !seen.insert(&field.name) {
                 bail!("found duplicate field name '{}'", field.name);
-            }
-            if field.primary_key && field.null_sentinel.is_some() {
-                bail!(
-                    "primary-key field '{}' must not have a null sentinel",
-                    field.name
-                );
-            }
-            if field.true_sentinel.is_some() || field.false_sentinel.is_some() {
-                let kind = ValueKind::from_config(&field.sql_type)
-                    .with_context(|| format!("field '{}'", field.name))?;
-                if kind != ValueKind::Boolean {
-                    bail!(
-                        "field '{}': 'true' and 'false' sentinels are only valid on BOOLEAN fields",
-                        field.name
-                    );
-                }
-            }
-            if let (Some(t), Some(f)) = (&field.true_sentinel, &field.false_sentinel)
-                && t == f
-            {
-                bail!(
-                    "field '{}': 'true' and 'false' sentinels must differ",
-                    field.name
-                );
-            }
-            if let (Some(t), Some(n)) = (&field.true_sentinel, &field.null_sentinel)
-                && t == n
-            {
-                bail!(
-                    "field '{}': 'true' and 'null' sentinels must differ",
-                    field.name
-                );
-            }
-            if let (Some(f), Some(n)) = (&field.false_sentinel, &field.null_sentinel)
-                && f == n
-            {
-                bail!(
-                    "field '{}': 'false' and 'null' sentinels must differ",
-                    field.name
-                );
             }
         }
 
         Ok(())
     }
+}
 
+impl TableConfig {
     pub fn field_names(&self) -> Vec<String> {
         self.fields.iter().map(|field| field.name.clone()).collect()
     }
@@ -308,6 +472,67 @@ impl TableConfig {
     }
 }
 
+impl Validate for Config {
+    fn validate(&self) -> Result<()> {
+        if self.tables.is_empty() {
+            bail!("at least one table must be declared under [tables]");
+        }
+        for (name, table) in &self.tables {
+            table
+                .validate()
+                .with_context(|| format!("table '{}'", name))?;
+        }
+
+        let mut injected_names = HashSet::new();
+        for (index, field) in self.injected_fields.iter().enumerate() {
+            field
+                .validate()
+                .with_context(|| format!("injected-fields[{}]", index))?;
+            if !injected_names.insert(&field.name) {
+                bail!(
+                    "injected-fields[{}]: duplicate field name '{}'",
+                    index,
+                    field.name
+                );
+            }
+            for (table_name, table) in &self.tables {
+                if table.fields.iter().any(|f| f.name == field.name) {
+                    bail!(
+                        "injected-fields[{}] '{}' collides with a column in table '{}'",
+                        index,
+                        field.name,
+                        table_name
+                    );
+                }
+            }
+        }
+
+        self.truncate.validate()?;
+        self.compression.validate()?;
+        self.filters.validate()?;
+
+        for (label, rules) in [
+            ("filters.include", &self.filters.include),
+            ("filters.exclude", &self.filters.exclude),
+        ] {
+            for (index, rule) in rules.iter().enumerate() {
+                for table_name in &rule.tables {
+                    if !self.tables.contains_key(table_name) {
+                        bail!(
+                            "{}[{}]: references unknown table '{}'",
+                            label,
+                            index,
+                            table_name
+                        );
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+}
+
 impl Config {
     pub fn load(work_dir: &Path) -> Result<Config> {
         let toml_path = work_dir.join("config.toml");
@@ -324,190 +549,38 @@ impl Config {
         log::debug!("Parsing config from file '{}'...", path.display());
         let content = fs::read_to_string(&path).context("failed to read config file")?;
         let mut config: Config = match format {
-            ConfigFormat::Toml => toml::from_str(&content).context("failed to parse config")?,
+            ConfigFormat::Toml => {
+                toml::from_str(&content).context("failed to parse config TOML file")?
+            }
             ConfigFormat::Json => {
-                serde_json::from_str(&content).context("failed to parse config")?
+                serde_json::from_str(&content).context("failed to parse config JSON file")?
             }
         };
         config.work_dir = work_dir.to_path_buf();
 
-        // Validate each table: at least one primary key, no duplicate field
-        // names, and no null sentinels on primary-key fields.
-        for (name, table) in &config.tables {
-            table
-                .validate()
-                .with_context(|| format!("table '{}'", name))?;
-        }
-
-        // Validate injected fields: no duplicate names across the list,
-        // and each field must have a valid SQL type.
-        let mut injected_names = HashSet::new();
-        for (index, field) in config.injected_fields.iter().enumerate() {
-            if !injected_names.insert(&field.name) {
-                bail!(
-                    "injected-fields[{}]: duplicate field name '{}'",
-                    index,
-                    field.name
-                );
-            }
-            field
-                .validate()
-                .with_context(|| format!("injected-fields[{}]", index))?;
-        }
-
-        // Validate truncation: max-blocks >= 1 and max-age is a valid
-        // duration string (e.g. "30s", "12h", "7d").
-        if let Some(max_blocks) = config.truncate.max_blocks
-            && max_blocks < 1
-        {
-            bail!("truncate.max-blocks must be >= 1");
-        }
-        if let Some(ref max_age) = config.truncate.max_age {
-            parse_duration(max_age).context("truncate.max-age")?;
-        }
+        config.validate()?;
 
         log::info!("Initialized config with {} tables", config.tables.len());
         Ok(config)
     }
 }
 
-const SECONDS_PER_MINUTE: u64 = 60;
-const SECONDS_PER_HOUR: u64 = 60 * SECONDS_PER_MINUTE;
-const SECONDS_PER_DAY: u64 = 24 * SECONDS_PER_HOUR;
-const SECONDS_PER_WEEK: u64 = 7 * SECONDS_PER_DAY;
-
-/// Parse a duration string into a `Duration`. Supports single-unit (`"30s"`, `"7d"`) and
-/// compound (`"1d12h"`, `"1h30m"`) durations.
-/// Supported suffixes: `s` (seconds), `m` (minutes), `h` (hours), `d` (days), `w` (weeks).
-pub fn parse_duration(s: &str) -> Result<Duration> {
-    if s.is_empty() {
-        bail!("empty duration string");
-    }
-
-    let mut total_seconds: u64 = 0;
-    let mut number_start = None;
-
-    for (i, c) in s.char_indices() {
-        if c.is_ascii_digit() {
-            if number_start.is_none() {
-                number_start = Some(i);
-            }
-        } else {
-            let start = number_start.take().ok_or_else(|| {
-                anyhow::anyhow!("invalid duration '{}': expected digit before '{}'", s, c)
-            })?;
-            let value: u64 = s[start..i]
-                .parse()
-                .map_err(|_| anyhow::anyhow!("invalid duration '{}'", s))?;
-            let multiplier = match c {
-                's' => 1,
-                'm' => SECONDS_PER_MINUTE,
-                'h' => SECONDS_PER_HOUR,
-                'd' => SECONDS_PER_DAY,
-                'w' => SECONDS_PER_WEEK,
-                _ => bail!("invalid duration suffix '{}' in '{}'", c, s),
-            };
-            total_seconds = total_seconds
-                .checked_add(
-                    value
-                        .checked_mul(multiplier)
-                        .ok_or_else(|| anyhow::anyhow!("duration overflow in '{}'", s))?,
-                )
-                .ok_or_else(|| anyhow::anyhow!("duration overflow in '{}'", s))?;
-        }
-    }
-
-    if number_start.is_some() {
-        bail!("invalid duration '{}': trailing digits without suffix", s);
-    }
-
-    Ok(Duration::from_secs(total_seconds))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_parse_duration_seconds() {
-        assert_eq!(parse_duration("30s").unwrap(), Duration::from_secs(30));
-    }
-
-    #[test]
-    fn test_parse_duration_minutes() {
-        assert_eq!(parse_duration("5m").unwrap(), Duration::from_secs(300));
-    }
-
-    #[test]
-    fn test_parse_duration_hours() {
-        assert_eq!(parse_duration("12h").unwrap(), Duration::from_secs(43200));
-    }
-
-    #[test]
-    fn test_parse_duration_days() {
-        assert_eq!(parse_duration("7d").unwrap(), Duration::from_secs(604800));
-    }
-
-    #[test]
-    fn test_parse_duration_weeks() {
-        assert_eq!(parse_duration("2w").unwrap(), Duration::from_secs(1209600));
-    }
-
-    #[test]
-    fn test_parse_duration_invalid_suffix() {
-        assert!(parse_duration("10x").is_err());
-    }
-
-    #[test]
-    fn test_parse_duration_invalid_number() {
-        assert!(parse_duration("abcs").is_err());
-    }
-
-    #[test]
-    fn test_parse_duration_empty() {
-        assert!(parse_duration("").is_err());
-    }
-
-    #[test]
-    fn test_parse_duration_compound() {
-        assert_eq!(
-            parse_duration("1d12h").unwrap(),
-            Duration::from_secs(SECONDS_PER_DAY + 12 * SECONDS_PER_HOUR)
-        );
-        assert_eq!(
-            parse_duration("1h30m").unwrap(),
-            Duration::from_secs(SECONDS_PER_HOUR + 30 * SECONDS_PER_MINUTE)
-        );
-        assert_eq!(
-            parse_duration("1w2d3h4m5s").unwrap(),
-            Duration::from_secs(
-                SECONDS_PER_WEEK
-                    + 2 * SECONDS_PER_DAY
-                    + 3 * SECONDS_PER_HOUR
-                    + 4 * SECONDS_PER_MINUTE
-                    + 5
-            )
-        );
-    }
-
-    #[test]
-    fn test_parse_duration_trailing_digits() {
-        assert!(parse_duration("30").is_err());
-    }
-
     fn make_field(
         name: &str,
-        sql_type: &str,
+        value_kind: ValueKind,
         primary_key: bool,
         null_sentinel: Option<&str>,
     ) -> FieldConfig {
         FieldConfig {
             name: name.to_string(),
-            sql_type: sql_type.to_string(),
+            value_kind,
             primary_key,
             null_sentinel: null_sentinel.map(|s| s.to_string()),
-            true_sentinel: None,
-            false_sentinel: None,
+            ..Default::default()
         }
     }
 
@@ -522,9 +595,9 @@ mod tests {
     #[test]
     fn test_ordered_field_names() {
         let config = make_table_config(vec![
-            make_field("name", "TEXT", false, None),
-            make_field("id", "NUMBER", true, None),
-            make_field("email", "TEXT", false, None),
+            make_field("name", ValueKind::Text, false, None),
+            make_field("id", ValueKind::Number, true, None),
+            make_field("email", ValueKind::Text, false, None),
         ]);
         assert_eq!(config.ordered_field_names(), vec!["id", "name", "email"]);
     }
@@ -532,9 +605,9 @@ mod tests {
     #[test]
     fn test_ordered_field_names_multiple_primary_keys() {
         let config = make_table_config(vec![
-            make_field("value", "TEXT", false, None),
-            make_field("pk_b", "TEXT", true, None),
-            make_field("pk_a", "TEXT", true, None),
+            make_field("value", ValueKind::Text, false, None),
+            make_field("pk_b", ValueKind::Text, true, None),
+            make_field("pk_a", ValueKind::Text, true, None),
         ]);
         // PKs in declaration order, then subsidiaries
         assert_eq!(config.ordered_field_names(), vec!["pk_b", "pk_a", "value"]);
@@ -542,62 +615,78 @@ mod tests {
 
     #[test]
     fn test_validate_rejects_true_sentinel_on_non_boolean() {
-        let mut field = make_field("name", "TEXT", false, None);
-        field.true_sentinel = Some("Y".to_string());
-        let config = make_table_config(vec![make_field("id", "TEXT", true, None), field]);
-        let err = config.validate().unwrap_err();
-        let msg = format!("{:#}", err);
+        let field = FieldConfig {
+            name: "name".to_string(),
+            value_kind: ValueKind::Text,
+            true_sentinel: Some("Y".to_string()),
+            ..Default::default()
+        };
+        let msg = format!("{:#}", field.validate().unwrap_err());
         assert!(msg.contains("only valid on BOOLEAN"), "got: {msg}");
     }
 
     #[test]
     fn test_validate_rejects_false_sentinel_on_non_boolean() {
-        let mut field = make_field("count", "NUMBER", false, None);
-        field.false_sentinel = Some("none".to_string());
-        let config = make_table_config(vec![make_field("id", "TEXT", true, None), field]);
-        let err = config.validate().unwrap_err();
-        let msg = format!("{:#}", err);
+        let field = FieldConfig {
+            name: "count".to_string(),
+            value_kind: ValueKind::Number,
+            false_sentinel: Some("none".to_string()),
+            ..Default::default()
+        };
+        let msg = format!("{:#}", field.validate().unwrap_err());
         assert!(msg.contains("only valid on BOOLEAN"), "got: {msg}");
     }
 
     #[test]
     fn test_validate_rejects_equal_true_and_false_sentinels() {
-        let mut field = make_field("flag", "BOOLEAN", false, None);
-        field.true_sentinel = Some("X".to_string());
-        field.false_sentinel = Some("X".to_string());
-        let config = make_table_config(vec![make_field("id", "TEXT", true, None), field]);
-        let err = config.validate().unwrap_err();
-        let msg = format!("{:#}", err);
+        let field = FieldConfig {
+            name: "flag".to_string(),
+            value_kind: ValueKind::Boolean,
+            true_sentinel: Some("X".to_string()),
+            false_sentinel: Some("X".to_string()),
+            ..Default::default()
+        };
+        let msg = format!("{:#}", field.validate().unwrap_err());
         assert!(msg.contains("'true' and 'false' sentinels"), "got: {msg}");
     }
 
     #[test]
     fn test_validate_rejects_true_sentinel_collision_with_null() {
-        let mut field = make_field("flag", "BOOLEAN", false, Some("X"));
-        field.true_sentinel = Some("X".to_string());
-        let config = make_table_config(vec![make_field("id", "TEXT", true, None), field]);
-        let err = config.validate().unwrap_err();
-        let msg = format!("{:#}", err);
+        let field = FieldConfig {
+            name: "flag".to_string(),
+            value_kind: ValueKind::Boolean,
+            null_sentinel: Some("X".to_string()),
+            true_sentinel: Some("X".to_string()),
+            ..Default::default()
+        };
+        let msg = format!("{:#}", field.validate().unwrap_err());
         assert!(msg.contains("'true' and 'null' sentinels"), "got: {msg}");
     }
 
     #[test]
     fn test_validate_rejects_false_sentinel_collision_with_null() {
-        let mut field = make_field("flag", "BOOLEAN", false, Some("X"));
-        field.false_sentinel = Some("X".to_string());
-        let config = make_table_config(vec![make_field("id", "TEXT", true, None), field]);
-        let err = config.validate().unwrap_err();
-        let msg = format!("{:#}", err);
+        let field = FieldConfig {
+            name: "flag".to_string(),
+            value_kind: ValueKind::Boolean,
+            null_sentinel: Some("X".to_string()),
+            false_sentinel: Some("X".to_string()),
+            ..Default::default()
+        };
+        let msg = format!("{:#}", field.validate().unwrap_err());
         assert!(msg.contains("'false' and 'null' sentinels"), "got: {msg}");
     }
 
     #[test]
     fn test_validate_accepts_distinct_sentinels_on_boolean() {
-        let mut field = make_field("flag", "BOOLEAN", false, Some("?"));
-        field.true_sentinel = Some("Y".to_string());
-        field.false_sentinel = Some("N".to_string());
-        let config = make_table_config(vec![make_field("id", "TEXT", true, None), field]);
-        config.validate().unwrap();
+        let field = FieldConfig {
+            name: "flag".to_string(),
+            value_kind: ValueKind::Boolean,
+            null_sentinel: Some("?".to_string()),
+            true_sentinel: Some("Y".to_string()),
+            false_sentinel: Some("N".to_string()),
+            ..Default::default()
+        };
+        field.validate().unwrap();
     }
 
     fn make_rule(tables: Vec<&str>, field: &str, regex: &str) -> FilterRule {
