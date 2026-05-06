@@ -152,11 +152,8 @@ fields = [
     );
 
     let result = Config::load(tmp.path());
-    assert!(result.is_err());
-    assert!(
-        result.unwrap_err().to_string().contains("max-age"),
-        "should report invalid max-age"
-    );
+    let err = format!("{:#}", result.unwrap_err());
+    assert!(err.contains("max-age"), "should report invalid max-age: {err}");
 }
 
 #[test]

@@ -38,6 +38,19 @@ where
     ValueKind::from_config(&type_str).map_err(serde::de::Error::custom)
 }
 
+// Custom deserializer for an optional Duration: reads the field as an
+// optional string and parses it via `parse_duration`, surfacing parse errors
+// as deserialization errors so an invalid duration fails config loading.
+fn deserialize_duration<'de, D>(deserializer: D) -> Result<Option<Duration>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value: Option<String> = Option::deserialize(deserializer)?;
+    value
+        .map(|s| parse_duration(&s).map_err(serde::de::Error::custom))
+        .transpose()
+}
+
 // Config file formats we accept.
 enum ConfigFormat {
     Toml,
@@ -52,8 +65,8 @@ pub struct TruncateConfig {
     #[serde(rename = "max-blocks")]
     pub max_blocks: Option<u32>,
     /// Drop blocks whose `created` timestamp is older than this duration (e.g. `"30d"`). `None` disables the limit.
-    #[serde(rename = "max-age")]
-    pub max_age: Option<String>,
+    #[serde(rename = "max-age", deserialize_with = "deserialize_duration")]
+    pub max_age: Option<Duration>,
     /// When true, also delete blocks no longer referenced by any retained block.
     #[serde(rename = "remove-orphans")]
     pub remove_orphans: bool,
@@ -79,9 +92,6 @@ impl Validate for TruncateConfig {
             && max_blocks < 1
         {
             bail!("truncate.max-blocks must be >= 1");
-        }
-        if let Some(ref max_age) = self.max_age {
-            parse_duration(max_age).context("truncate.max-age")?;
         }
         Ok(())
     }
@@ -492,7 +502,7 @@ const SECONDS_PER_WEEK: u64 = 7 * SECONDS_PER_DAY;
 /// Parse a duration string into a `Duration`. Supports single-unit (`"30s"`, `"7d"`) and
 /// compound (`"1d12h"`, `"1h30m"`) durations.
 /// Supported suffixes: `s` (seconds), `m` (minutes), `h` (hours), `d` (days), `w` (weeks).
-pub fn parse_duration(s: &str) -> Result<Duration> {
+fn parse_duration(s: &str) -> Result<Duration> {
     if s.is_empty() {
         bail!("empty duration string");
     }
