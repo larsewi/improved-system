@@ -115,12 +115,20 @@ impl FilterRule {
     }
 }
 
+/// Drops records at CSV load time so they never enter state, deltas, or SQL
+/// output.
 #[derive(Debug, Default, Deserialize)]
 pub struct FilterConfig {
+    /// Drop records where any field value exceeds this character length.
+    /// `None` disables the limit.
     #[serde(rename = "max-field-length")]
     pub max_field_length: Option<usize>,
+    /// Whitelist rules. When any include rule applies to a table, a record is
+    /// kept only if at least one rule matches.
     #[serde(default)]
     pub include: Vec<FilterRule>,
+    /// Blacklist rules. Records matching any applicable exclude rule are
+    /// dropped. Exclude wins on overlap.
     #[serde(default)]
     pub exclude: Vec<FilterRule>,
 }
