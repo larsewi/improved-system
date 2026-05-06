@@ -206,17 +206,26 @@ impl FilterConfig {
     }
 }
 
+/// Top-level configuration loaded from `config.toml` or `config.json` in the
+/// work directory.
 #[derive(Debug, Deserialize)]
 pub struct Config {
+    /// Directory the config was loaded from; populated by `Config::load`, not
+    /// deserialized.
     #[serde(skip)]
     pub work_dir: PathBuf,
+    /// Static fields added to every generated SQL row.
     #[serde(default, rename = "injected-fields")]
     pub injected_fields: Vec<InjectedFieldConfig>,
+    /// Zstd compression settings for patch payloads.
     #[serde(default)]
     pub compression: CompressionConfig,
+    /// Per-table source-file and field schemas, keyed by table name.
     pub tables: HashMap<String, TableConfig>,
+    /// Block chain truncation policy.
     #[serde(default)]
     pub truncate: TruncateConfig,
+    /// Include/exclude rules applied at CSV load time.
     #[serde(default)]
     pub filters: FilterConfig,
 }
