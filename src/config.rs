@@ -88,18 +88,25 @@ impl Default for CompressionConfig {
 /// A static field added to every generated SQL row (e.g. a `host` column
 /// identifying which agent produced the data).
 #[derive(Debug, Deserialize)]
+#[serde(default)]
 pub struct InjectedFieldConfig {
     /// Column name in the target database.
     pub name: String,
     /// Value type; one of `TEXT`, `NUMBER`, or `BOOLEAN`.
-    #[serde(
-        rename = "type",
-        default = "default_value_kind",
-        deserialize_with = "deserialize_value_kind"
-    )]
+    #[serde(rename = "type", deserialize_with = "deserialize_value_kind")]
     pub value_kind: ValueKind,
     /// The static value written into the column for every row.
     pub value: String,
+}
+
+impl Default for InjectedFieldConfig {
+    fn default() -> Self {
+        Self {
+            name: String::new(),
+            value_kind: ValueKind::Text,
+            value: String::new(),
+        }
+    }
 }
 
 /// Rules to include/exclude records in tables.
@@ -267,10 +274,6 @@ impl Default for FieldConfig {
     }
 }
 
-fn default_value_kind() -> ValueKind {
-    ValueKind::Text
-}
-
 #[derive(Debug, Deserialize)]
 pub struct TableConfig {
     pub source: String,
@@ -396,10 +399,21 @@ impl Config {
                 .with_context(|| format!("table '{}'", name))?;
         }
 
-        // Validate injected fields: no duplicate names across the list.
-        // Type validity is enforced by the `value_kind` deserializer.
+        // Validate injected fields: name and value are non-empty, and no
+        // duplicate names. Type validity is enforced by the `value_kind`
+        // deserializer.
         let mut injected_names = HashSet::new();
         for (index, field) in config.injected_fields.iter().enumerate() {
+            if field.name.is_empty() {
+                bail!("injected-fields[{}]: name must not be empty", index);
+            }
+            if field.value.is_empty() {
+                bail!(
+                    "injected-fields[{}] '{}': value must not be empty",
+                    index,
+                    field.name
+                );
+            }
             if !injected_names.insert(&field.name) {
                 bail!(
                     "injected-fields[{}]: duplicate field name '{}'",
