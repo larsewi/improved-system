@@ -511,6 +511,24 @@ impl Validate for Config {
         self.compression.validate()?;
         self.filters.validate()?;
 
+        for (label, rules) in [
+            ("filters.include", &self.filters.include),
+            ("filters.exclude", &self.filters.exclude),
+        ] {
+            for (index, rule) in rules.iter().enumerate() {
+                for table_name in &rule.tables {
+                    if !self.tables.contains_key(table_name) {
+                        bail!(
+                            "{}[{}]: references unknown table '{}'",
+                            label,
+                            index,
+                            table_name
+                        );
+                    }
+                }
+            }
+        }
+
         Ok(())
     }
 }
