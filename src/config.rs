@@ -8,7 +8,7 @@ use std::time::Duration;
 use anyhow::{Context, Result, bail};
 
 use crate::utils::parse_duration;
-use crate::value::ValueKind;
+use crate::value::{ValueKind, parse_typed_value};
 
 /// Post-deserialize semantic checks for config structs (cross-field
 /// invariants, value ranges, etc.) that serde can't express on its own.
@@ -164,6 +164,8 @@ impl Validate for InjectedFieldConfig {
         if self.value.is_empty() {
             bail!("'{}': value must not be empty", self.name);
         }
+        parse_typed_value(&self.value, self.value_kind)
+            .with_context(|| format!("'{}'", self.name))?;
         Ok(())
     }
 }
