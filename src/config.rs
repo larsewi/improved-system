@@ -20,6 +20,17 @@ where
     Regex::new(&pattern).map_err(serde::de::Error::custom)
 }
 
+// Custom deserializer for ValueKind: reads the field as a string and parses it
+// via `ValueKind::from_config`, surfacing unknown types as deserialization
+// errors so invalid `type` values fail config loading.
+fn deserialize_value_kind<'de, D>(deserializer: D) -> Result<ValueKind, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let type_str = String::deserialize(deserializer)?;
+    ValueKind::from_config(&type_str).map_err(serde::de::Error::custom)
+}
+
 // Config file formats we accept.
 enum ConfigFormat {
     Toml,
@@ -81,17 +92,14 @@ pub struct InjectedFieldConfig {
     /// Column name in the target database.
     pub name: String,
     /// Value type; one of `TEXT`, `NUMBER`, or `BOOLEAN`.
-    #[serde(rename = "type", default = "default_sql_type")]
-    pub value_kind: String,
+    #[serde(
+        rename = "type",
+        default = "default_value_kind",
+        deserialize_with = "deserialize_value_kind"
+    )]
+    pub value_kind: ValueKind,
     /// The static value written into the column for every row.
     pub value: String,
-}
-
-impl InjectedFieldConfig {
-    fn validate(&self) -> Result<()> {
-        ValueKind::from_config(&self.value_kind).context("invalid type")?;
-        Ok(())
-    }
 }
 
 /// Rules to include/exclude records in tables.
@@ -233,8 +241,12 @@ pub struct Config {
 #[derive(Debug, Deserialize)]
 pub struct FieldConfig {
     pub name: String,
-    #[serde(rename = "type", default = "default_sql_type")]
-    pub value_kind: String,
+    #[serde(
+        rename = "type",
+        default = "default_value_kind",
+        deserialize_with = "deserialize_value_kind"
+    )]
+    pub value_kind: ValueKind,
     #[serde(rename = "primary-key", default)]
     pub primary_key: bool,
     #[serde(default, rename = "null")]
@@ -245,8 +257,8 @@ pub struct FieldConfig {
     pub false_sentinel: Option<String>,
 }
 
-fn default_sql_type() -> String {
-    "TEXT".to_string()
+fn default_value_kind() -> ValueKind {
+    ValueKind::Text
 }
 
 #[derive(Debug, Deserialize)]
@@ -275,15 +287,13 @@ impl TableConfig {
                     field.name
                 );
             }
-            if field.true_sentinel.is_some() || field.false_sentinel.is_some() {
-                let kind = ValueKind::from_config(&field.value_kind)
-                    .with_context(|| format!("field '{}'", field.name))?;
-                if kind != ValueKind::Boolean {
-                    bail!(
-                        "field '{}': 'true' and 'false' sentinels are only valid on BOOLEAN fields",
-                        field.name
-                    );
-                }
+            if (field.true_sentinel.is_some() || field.false_sentinel.is_some())
+                && field.value_kind != ValueKind::Boolean
+            {
+                bail!(
+                    "field '{}': 'true' and 'false' sentinels are only valid on BOOLEAN fields",
+                    field.name
+                );
             }
             if let (Some(t), Some(f)) = (&field.true_sentinel, &field.false_sentinel)
                 && t == f
@@ -373,8 +383,8 @@ impl Config {
                 .with_context(|| format!("table '{}'", name))?;
         }
 
-        // Validate injected fields: no duplicate names across the list,
-        // and each field must have a valid SQL type.
+        // Validate injected fields: no duplicate names across the list.
+        // Type validity is enforced by the `value_kind` deserializer.
         let mut injected_names = HashSet::new();
         for (index, field) in config.injected_fields.iter().enumerate() {
             if !injected_names.insert(&field.name) {
@@ -384,9 +394,6 @@ impl Config {
                     field.name
                 );
             }
-            field
-                .validate()
-                .with_context(|| format!("injected-fields[{}]", index))?;
         }
 
         // Validate truncation: max-blocks >= 1 and max-age is a valid
@@ -531,13 +538,13 @@ mod tests {
 
     fn make_field(
         name: &str,
-        value_kind: &str,
+        value_kind: ValueKind,
         primary_key: bool,
         null_sentinel: Option<&str>,
     ) -> FieldConfig {
         FieldConfig {
             name: name.to_string(),
-            value_kind: value_kind.to_string(),
+            value_kind,
             primary_key,
             null_sentinel: null_sentinel.map(|s| s.to_string()),
             true_sentinel: None,
@@ -556,9 +563,9 @@ mod tests {
     #[test]
     fn test_ordered_field_names() {
         let config = make_table_config(vec![
-            make_field("name", "TEXT", false, None),
-            make_field("id", "NUMBER", true, None),
-            make_field("email", "TEXT", false, None),
+            make_field("name", ValueKind::Text, false, None),
+            make_field("id", ValueKind::Number, true, None),
+            make_field("email", ValueKind::Text, false, None),
         ]);
         assert_eq!(config.ordered_field_names(), vec!["id", "name", "email"]);
     }
@@ -566,9 +573,9 @@ mod tests {
     #[test]
     fn test_ordered_field_names_multiple_primary_keys() {
         let config = make_table_config(vec![
-            make_field("value", "TEXT", false, None),
-            make_field("pk_b", "TEXT", true, None),
-            make_field("pk_a", "TEXT", true, None),
+            make_field("value", ValueKind::Text, false, None),
+            make_field("pk_b", ValueKind::Text, true, None),
+            make_field("pk_a", ValueKind::Text, true, None),
         ]);
         // PKs in declaration order, then subsidiaries
         assert_eq!(config.ordered_field_names(), vec!["pk_b", "pk_a", "value"]);
@@ -576,9 +583,9 @@ mod tests {
 
     #[test]
     fn test_validate_rejects_true_sentinel_on_non_boolean() {
-        let mut field = make_field("name", "TEXT", false, None);
+        let mut field = make_field("name", ValueKind::Text, false, None);
         field.true_sentinel = Some("Y".to_string());
-        let config = make_table_config(vec![make_field("id", "TEXT", true, None), field]);
+        let config = make_table_config(vec![make_field("id", ValueKind::Text, true, None), field]);
         let err = config.validate().unwrap_err();
         let msg = format!("{:#}", err);
         assert!(msg.contains("only valid on BOOLEAN"), "got: {msg}");
@@ -586,9 +593,9 @@ mod tests {
 
     #[test]
     fn test_validate_rejects_false_sentinel_on_non_boolean() {
-        let mut field = make_field("count", "NUMBER", false, None);
+        let mut field = make_field("count", ValueKind::Number, false, None);
         field.false_sentinel = Some("none".to_string());
-        let config = make_table_config(vec![make_field("id", "TEXT", true, None), field]);
+        let config = make_table_config(vec![make_field("id", ValueKind::Text, true, None), field]);
         let err = config.validate().unwrap_err();
         let msg = format!("{:#}", err);
         assert!(msg.contains("only valid on BOOLEAN"), "got: {msg}");
@@ -596,10 +603,10 @@ mod tests {
 
     #[test]
     fn test_validate_rejects_equal_true_and_false_sentinels() {
-        let mut field = make_field("flag", "BOOLEAN", false, None);
+        let mut field = make_field("flag", ValueKind::Boolean, false, None);
         field.true_sentinel = Some("X".to_string());
         field.false_sentinel = Some("X".to_string());
-        let config = make_table_config(vec![make_field("id", "TEXT", true, None), field]);
+        let config = make_table_config(vec![make_field("id", ValueKind::Text, true, None), field]);
         let err = config.validate().unwrap_err();
         let msg = format!("{:#}", err);
         assert!(msg.contains("'true' and 'false' sentinels"), "got: {msg}");
@@ -607,9 +614,9 @@ mod tests {
 
     #[test]
     fn test_validate_rejects_true_sentinel_collision_with_null() {
-        let mut field = make_field("flag", "BOOLEAN", false, Some("X"));
+        let mut field = make_field("flag", ValueKind::Boolean, false, Some("X"));
         field.true_sentinel = Some("X".to_string());
-        let config = make_table_config(vec![make_field("id", "TEXT", true, None), field]);
+        let config = make_table_config(vec![make_field("id", ValueKind::Text, true, None), field]);
         let err = config.validate().unwrap_err();
         let msg = format!("{:#}", err);
         assert!(msg.contains("'true' and 'null' sentinels"), "got: {msg}");
@@ -617,9 +624,9 @@ mod tests {
 
     #[test]
     fn test_validate_rejects_false_sentinel_collision_with_null() {
-        let mut field = make_field("flag", "BOOLEAN", false, Some("X"));
+        let mut field = make_field("flag", ValueKind::Boolean, false, Some("X"));
         field.false_sentinel = Some("X".to_string());
-        let config = make_table_config(vec![make_field("id", "TEXT", true, None), field]);
+        let config = make_table_config(vec![make_field("id", ValueKind::Text, true, None), field]);
         let err = config.validate().unwrap_err();
         let msg = format!("{:#}", err);
         assert!(msg.contains("'false' and 'null' sentinels"), "got: {msg}");
@@ -627,10 +634,10 @@ mod tests {
 
     #[test]
     fn test_validate_accepts_distinct_sentinels_on_boolean() {
-        let mut field = make_field("flag", "BOOLEAN", false, Some("?"));
+        let mut field = make_field("flag", ValueKind::Boolean, false, Some("?"));
         field.true_sentinel = Some("Y".to_string());
         field.false_sentinel = Some("N".to_string());
-        let config = make_table_config(vec![make_field("id", "TEXT", true, None), field]);
+        let config = make_table_config(vec![make_field("id", ValueKind::Text, true, None), field]);
         config.validate().unwrap();
     }
 
