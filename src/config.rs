@@ -414,6 +414,9 @@ impl Validate for FieldConfig {
 
 impl Validate for TableConfig {
     fn validate(&self) -> Result<()> {
+        if self.source.is_empty() {
+            bail!("source must not be empty");
+        }
         let num_primary_keys = self.fields.iter().filter(|field| field.primary_key).count();
         if num_primary_keys == 0 {
             bail!("at least one field must be marked as primary-key");
