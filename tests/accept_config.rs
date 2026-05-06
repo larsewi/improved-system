@@ -232,6 +232,35 @@ fn test_empty_tables_map_rejected() {
 }
 
 #[test]
+fn test_injected_field_collides_with_table_column() {
+    common::init_logging();
+    let tmp = tempfile::tempdir().unwrap();
+    common::write_config(
+        tmp.path(),
+        "config.toml",
+        r#"
+[[injected-fields]]
+name = "host"
+type = "TEXT"
+value = "agent-1"
+
+[tables.users]
+source = "users.csv"
+fields = [
+    { name = "id", type = "NUMBER", primary-key = true },
+    { name = "host", type = "TEXT" },
+]
+"#,
+    );
+
+    let err = format!("{:#}", Config::load(tmp.path()).unwrap_err());
+    assert!(
+        err.contains("collides"),
+        "should report collision with table column: {err}"
+    );
+}
+
+#[test]
 fn test_compression_level_out_of_range() {
     common::init_logging();
     let tmp = tempfile::tempdir().unwrap();
