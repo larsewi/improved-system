@@ -8,7 +8,7 @@ use anyhow::{Context, Result};
 use crate::config::{FieldConfig, FilterConfig, TableConfig};
 use crate::entry::decode_proto_records;
 use crate::value::{
-    DEFAULT_FALSE_SENTINEL, DEFAULT_TRUE_SENTINEL, SqlType, Value, display_proto_values,
+    DEFAULT_FALSE_SENTINEL, DEFAULT_TRUE_SENTINEL, Value, ValueKind, display_proto_values,
     parse_boolean, parse_typed_value,
 };
 
@@ -221,18 +221,18 @@ fn parse_columns(
 
 /// Parse a single CSV value into a `Value` based on its field config.
 /// Values matching the `null` sentinel become `Value::Null`; otherwise the
-/// value is parsed by `SqlType` (`TEXT`/`NUMBER`/`BOOLEAN`). For BOOLEAN
-/// fields the per-field `true` / `false` sentinels are honoured, falling
-/// back to the strict defaults `"true"` / `"false"`.
+/// value is parsed by its declared kind (`TEXT`/`NUMBER`/`BOOLEAN`). For
+/// BOOLEAN fields the per-field `true` / `false` sentinels are honoured,
+/// falling back to the strict defaults `"true"` / `"false"`.
 fn parse_field_value(value: &str, field: &FieldConfig) -> Result<Value> {
     if let Some(sentinel) = &field.null_sentinel
         && value == sentinel
     {
         return Ok(Value::Null);
     }
-    let sql_type =
-        SqlType::from_config(&field.sql_type).with_context(|| format!("field '{}'", field.name))?;
-    if let SqlType::Boolean = sql_type {
+    let kind = ValueKind::from_config(&field.sql_type)
+        .with_context(|| format!("field '{}'", field.name))?;
+    if let ValueKind::Boolean = kind {
         let true_sentinel = field
             .true_sentinel
             .as_deref()
@@ -245,7 +245,7 @@ fn parse_field_value(value: &str, field: &FieldConfig) -> Result<Value> {
             .map(Value::Boolean)
             .with_context(|| format!("field '{}'", field.name));
     }
-    parse_typed_value(value, &sql_type).with_context(|| format!("field '{}'", field.name))
+    parse_typed_value(value, kind).with_context(|| format!("field '{}'", field.name))
 }
 
 #[cfg(test)]

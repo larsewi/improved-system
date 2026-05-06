@@ -10,7 +10,7 @@ use crate::proto::injected::Field as ProtoInjectedField;
 use crate::proto::patch::Patch as ProtoPatch;
 use crate::proto::table::Table as ProtoTable;
 use crate::proto::update::Update as ProtoUpdate;
-use crate::value::{SqlType, Value};
+use crate::value::{Value, ValueKind};
 
 /// Schema information for a single table, derived from the wire-declared
 /// field list. Column ordering follows the wire (i.e. the agent's
@@ -25,8 +25,7 @@ struct TableSchema<'a> {
     num_primary_keys: usize,
     /// Hub-config field metadata keyed by field name. Used at SQL-rendering
     /// time to validate that each wire `Value`'s variant agrees with the
-    /// hub's declared `sql_type` and that nulls only appear in nullable
-    /// columns.
+    /// hub's declared type and that nulls only appear in nullable columns.
     field_configs: HashMap<&'a str, &'a FieldConfig>,
 }
 
@@ -44,7 +43,7 @@ impl<'a> TableSchema<'a> {
     ///   set — otherwise an agent could choose which column scopes the
     ///   WHERE clause on UPDATE/DELETE, allowing arbitrary-row targeting.
     ///
-    /// `sql_type` and nullability drift is caught later, per cell, by
+    /// Type and nullability drift is caught later, per cell, by
     /// [`check_value_matches_field`].
     fn resolve(wire_fields: &'a [String], config: &'a Config, table_name: &str) -> Result<Self> {
         let table_config = config
@@ -125,9 +124,9 @@ impl<'a> TableSchema<'a> {
 }
 
 /// Validate that a wire `Value`'s variant agrees with the field's declared
-/// `sql_type`, and that `Null` only appears in nullable fields.
+/// type, and that `Null` only appears in nullable fields.
 fn check_value_matches_field(value: &Value, field: &FieldConfig) -> Result<()> {
-    if value.is_null() {
+    if value.kind() == ValueKind::Null {
         if field.null_sentinel.is_none() {
             bail!(
                 "field '{}' is not nullable but wire value is NULL",
@@ -137,14 +136,9 @@ fn check_value_matches_field(value: &Value, field: &FieldConfig) -> Result<()> {
         return Ok(());
     }
 
-    let expected =
-        SqlType::from_config(&field.sql_type).with_context(|| format!("field '{}'", field.name))?;
-    let actual_ok = match expected {
-        SqlType::Text => value.is_text(),
-        SqlType::Number => value.is_number(),
-        SqlType::Boolean => value.is_boolean(),
-    };
-    if !actual_ok {
+    let expected = ValueKind::from_config(&field.sql_type)
+        .with_context(|| format!("field '{}'", field.name))?;
+    if value.kind() != expected {
         bail!(
             "field '{}': wire value {} does not match declared type {:?}",
             field.name,

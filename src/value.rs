@@ -35,21 +35,25 @@ impl Value {
         Ok(Value::Number(normalized))
     }
 
-    pub fn is_null(&self) -> bool {
-        matches!(self, Value::Null)
+    pub fn kind(&self) -> ValueKind {
+        match self {
+            Value::Null => ValueKind::Null,
+            Value::Text(_) => ValueKind::Text,
+            Value::Boolean(_) => ValueKind::Boolean,
+            Value::Number(_) => ValueKind::Number,
+        }
     }
+}
 
-    pub fn is_text(&self) -> bool {
-        matches!(self, Value::Text(_))
-    }
-
-    pub fn is_boolean(&self) -> bool {
-        matches!(self, Value::Boolean(_))
-    }
-
-    pub fn is_number(&self) -> bool {
-        matches!(self, Value::Number(_))
-    }
+/// The variant tag of a [`Value`], without the payload. Used to declare a
+/// field's expected type in config and to validate that a wire value's
+/// variant matches that declaration.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ValueKind {
+    Null,
+    Text,
+    Number,
+    Boolean,
 }
 
 // `f64` only implements `PartialEq`, not `Eq`, because `NaN != NaN`. The
@@ -206,22 +210,16 @@ impl From<Value> for ProtoValue {
     }
 }
 
-/// The SQL type a field's text value should be parsed as. Determines both
-/// how a CSV value is parsed into a [`Value`] and how the resulting value
-/// is later quoted when embedded in a SQL string.
-#[derive(Debug, Clone, PartialEq)]
-pub enum SqlType {
-    Text,
-    Number,
-    Boolean,
-}
-
-impl SqlType {
+impl ValueKind {
+    /// Parse a config field's `type` string (`"TEXT"` / `"NUMBER"` /
+    /// `"BOOLEAN"`, case-insensitive) into a [`ValueKind`]. Config never
+    /// declares NULL as a type, so [`ValueKind::Null`] is not produced
+    /// here.
     pub fn from_config(type_str: &str) -> Result<Self> {
         match type_str.to_uppercase().as_str() {
-            "TEXT" => Ok(SqlType::Text),
-            "NUMBER" => Ok(SqlType::Number),
-            "BOOLEAN" => Ok(SqlType::Boolean),
+            "TEXT" => Ok(ValueKind::Text),
+            "NUMBER" => Ok(ValueKind::Number),
+            "BOOLEAN" => Ok(ValueKind::Boolean),
             other => bail!(
                 "unknown field type '{}'; valid types are: TEXT, NUMBER, BOOLEAN",
                 other
@@ -253,19 +251,22 @@ pub fn parse_boolean(value: &str, true_sentinel: &str, false_sentinel: &str) -> 
     }
 }
 
-/// Parse a string into a typed `Value` according to the SQL type tag.
-/// Boolean parsing uses the default sentinels; CSV-parsing callers that
-/// honor per-field overrides should call [`parse_boolean`] directly.
-pub fn parse_typed_value(value: &str, sql_type: &SqlType) -> Result<Value> {
-    match sql_type {
-        SqlType::Text => Ok(Value::Text(value.to_string())),
-        SqlType::Number => {
+/// Parse a string into a typed `Value` according to the kind tag. Boolean
+/// parsing uses the default sentinels; CSV-parsing callers that honor
+/// per-field overrides should call [`parse_boolean`] directly. Passing
+/// [`ValueKind::Null`] is rejected — Null is set via the field's
+/// null-sentinel mechanism, not by parsing.
+pub fn parse_typed_value(value: &str, kind: ValueKind) -> Result<Value> {
+    match kind {
+        ValueKind::Null => bail!("cannot parse value as NULL"),
+        ValueKind::Text => Ok(Value::Text(value.to_string())),
+        ValueKind::Number => {
             let parsed: f64 = value
                 .parse()
                 .with_context(|| format!("invalid number: '{}'", value))?;
             Value::number(parsed)
         }
-        SqlType::Boolean => Ok(Value::Boolean(parse_boolean(
+        ValueKind::Boolean => Ok(Value::Boolean(parse_boolean(
             value,
             DEFAULT_TRUE_SENTINEL,
             DEFAULT_FALSE_SENTINEL,
@@ -397,16 +398,37 @@ mod tests {
     }
 
     #[test]
-    fn test_sql_type_from_config() {
-        assert_eq!(SqlType::from_config("TEXT").unwrap(), SqlType::Text);
-        assert_eq!(SqlType::from_config("NUMBER").unwrap(), SqlType::Number);
-        assert_eq!(SqlType::from_config("BOOLEAN").unwrap(), SqlType::Boolean);
+    fn test_value_kind_from_config() {
+        assert_eq!(ValueKind::from_config("TEXT").unwrap(), ValueKind::Text);
+        assert_eq!(ValueKind::from_config("NUMBER").unwrap(), ValueKind::Number);
+        assert_eq!(
+            ValueKind::from_config("BOOLEAN").unwrap(),
+            ValueKind::Boolean
+        );
         // Case insensitive
-        assert_eq!(SqlType::from_config("text").unwrap(), SqlType::Text);
-        assert_eq!(SqlType::from_config("number").unwrap(), SqlType::Number);
-        assert_eq!(SqlType::from_config("Boolean").unwrap(), SqlType::Boolean);
+        assert_eq!(ValueKind::from_config("text").unwrap(), ValueKind::Text);
+        assert_eq!(ValueKind::from_config("number").unwrap(), ValueKind::Number);
+        assert_eq!(
+            ValueKind::from_config("Boolean").unwrap(),
+            ValueKind::Boolean
+        );
         // Unknown types are rejected
-        assert!(SqlType::from_config("unknown").is_err());
+        assert!(ValueKind::from_config("unknown").is_err());
+        // NULL is not a valid declared type
+        assert!(ValueKind::from_config("NULL").is_err());
+    }
+
+    #[test]
+    fn test_value_kind_matches_value() {
+        assert_eq!(Value::Null.kind(), ValueKind::Null);
+        assert_eq!(Value::Text("x".into()).kind(), ValueKind::Text);
+        assert_eq!(Value::Number(1.0).kind(), ValueKind::Number);
+        assert_eq!(Value::Boolean(true).kind(), ValueKind::Boolean);
+    }
+
+    #[test]
+    fn test_parse_typed_value_rejects_null_kind() {
+        assert!(parse_typed_value("anything", ValueKind::Null).is_err());
     }
 
     #[test]
