@@ -163,7 +163,7 @@ mod tests {
     }
 
     #[test]
-    fn test_block_header_decodes_only_parent() {
+    fn test_block_bytes_decode_as_header() {
         let block = Block {
             parent: "deadbeef".to_string(),
             created: Some(prost_types::Timestamp {
@@ -177,5 +177,12 @@ mod tests {
 
         let header = BlockHeader::decode(buf.as_slice()).unwrap();
         assert_eq!(header.parent, "deadbeef");
+        assert_eq!(
+            header.created,
+            Some(prost_types::Timestamp {
+                seconds: 1700000000,
+                nanos: 0,
+            })
+        );
     }
 }
