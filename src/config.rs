@@ -239,22 +239,32 @@ pub struct Config {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(default)]
 pub struct FieldConfig {
     pub name: String,
-    #[serde(
-        rename = "type",
-        default = "default_value_kind",
-        deserialize_with = "deserialize_value_kind"
-    )]
+    #[serde(rename = "type", deserialize_with = "deserialize_value_kind")]
     pub value_kind: ValueKind,
-    #[serde(rename = "primary-key", default)]
+    #[serde(rename = "primary-key")]
     pub primary_key: bool,
-    #[serde(default, rename = "null")]
+    #[serde(rename = "null")]
     pub null_sentinel: Option<String>,
-    #[serde(default, rename = "true")]
+    #[serde(rename = "true")]
     pub true_sentinel: Option<String>,
-    #[serde(default, rename = "false")]
+    #[serde(rename = "false")]
     pub false_sentinel: Option<String>,
+}
+
+impl Default for FieldConfig {
+    fn default() -> Self {
+        Self {
+            name: String::new(),
+            value_kind: ValueKind::Text,
+            primary_key: false,
+            null_sentinel: None,
+            true_sentinel: None,
+            false_sentinel: None,
+        }
+    }
 }
 
 fn default_value_kind() -> ValueKind {
@@ -278,6 +288,9 @@ impl TableConfig {
 
         let mut seen = HashSet::new();
         for field in &self.fields {
+            if field.name.is_empty() {
+                bail!("field name must not be empty");
+            }
             if !seen.insert(&field.name) {
                 bail!("found duplicate field name '{}'", field.name);
             }
@@ -547,8 +560,7 @@ mod tests {
             value_kind,
             primary_key,
             null_sentinel: null_sentinel.map(|s| s.to_string()),
-            true_sentinel: None,
-            false_sentinel: None,
+            ..Default::default()
         }
     }
 

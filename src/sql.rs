@@ -502,11 +502,8 @@ mod tests {
                 .iter()
                 .map(|(name, primary_key)| FieldConfig {
                     name: name.to_string(),
-                    value_kind: ValueKind::Text,
                     primary_key: *primary_key,
-                    null_sentinel: None,
-                    true_sentinel: None,
-                    false_sentinel: None,
+                    ..Default::default()
                 })
                 .collect(),
         }
@@ -673,10 +670,8 @@ mod tests {
         FieldConfig {
             name: name.to_string(),
             value_kind,
-            primary_key: false,
             null_sentinel: if nullable { Some("".to_string()) } else { None },
-            true_sentinel: None,
-            false_sentinel: None,
+            ..Default::default()
         }
     }
 
