@@ -28,6 +28,7 @@ jobs:
             Please review the changes before merging.
           delete-branch: true
           assignees: larsewi
+          labels: chore
 
   c:
     runs-on: ubuntu-latest
@@ -55,6 +56,7 @@ jobs:
             Please review the changes before merging.
           delete-branch: true
           assignees: larsewi
+          labels: chore
 
   shell:
     runs-on: ubuntu-latest
@@ -83,6 +85,7 @@ jobs:
             Please review the changes before merging.
           delete-branch: true
           assignees: larsewi
+          labels: chore
 
   markdown:
     runs-on: ubuntu-latest
@@ -106,3 +109,4 @@ jobs:
             Please review the changes before merging.
           delete-branch: true
           assignees: larsewi
+          labels: chore
