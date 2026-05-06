@@ -219,6 +219,19 @@ fn test_json_config_file() {
 }
 
 #[test]
+fn test_empty_tables_map_rejected() {
+    common::init_logging();
+    let tmp = tempfile::tempdir().unwrap();
+    common::write_config(tmp.path(), "config.toml", "[tables]\n");
+
+    let err = format!("{:#}", Config::load(tmp.path()).unwrap_err());
+    assert!(
+        err.contains("at least one table"),
+        "should report empty tables: {err}"
+    );
+}
+
+#[test]
 fn test_compression_level_out_of_range() {
     common::init_logging();
     let tmp = tempfile::tempdir().unwrap();
