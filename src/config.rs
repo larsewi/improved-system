@@ -9,6 +9,9 @@ use anyhow::{Context, Result, bail};
 
 use crate::value::ValueKind;
 
+// Custom deserializer used via `#[serde(deserialize_with = ...)]`: reads the
+// field as a string and compiles it into a `Regex`, surfacing compile errors
+// as deserialization errors so an invalid pattern fails config loading.
 fn deserialize_regex<'de, D>(deserializer: D) -> Result<Regex, D::Error>
 where
     D: Deserializer<'de>,
