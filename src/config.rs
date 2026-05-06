@@ -615,62 +615,78 @@ mod tests {
 
     #[test]
     fn test_validate_rejects_true_sentinel_on_non_boolean() {
-        let mut field = make_field("name", ValueKind::Text, false, None);
-        field.true_sentinel = Some("Y".to_string());
-        let config = make_table_config(vec![make_field("id", ValueKind::Text, true, None), field]);
-        let err = config.validate().unwrap_err();
-        let msg = format!("{:#}", err);
+        let field = FieldConfig {
+            name: "name".to_string(),
+            value_kind: ValueKind::Text,
+            true_sentinel: Some("Y".to_string()),
+            ..Default::default()
+        };
+        let msg = format!("{:#}", field.validate().unwrap_err());
         assert!(msg.contains("only valid on BOOLEAN"), "got: {msg}");
     }
 
     #[test]
     fn test_validate_rejects_false_sentinel_on_non_boolean() {
-        let mut field = make_field("count", ValueKind::Number, false, None);
-        field.false_sentinel = Some("none".to_string());
-        let config = make_table_config(vec![make_field("id", ValueKind::Text, true, None), field]);
-        let err = config.validate().unwrap_err();
-        let msg = format!("{:#}", err);
+        let field = FieldConfig {
+            name: "count".to_string(),
+            value_kind: ValueKind::Number,
+            false_sentinel: Some("none".to_string()),
+            ..Default::default()
+        };
+        let msg = format!("{:#}", field.validate().unwrap_err());
         assert!(msg.contains("only valid on BOOLEAN"), "got: {msg}");
     }
 
     #[test]
     fn test_validate_rejects_equal_true_and_false_sentinels() {
-        let mut field = make_field("flag", ValueKind::Boolean, false, None);
-        field.true_sentinel = Some("X".to_string());
-        field.false_sentinel = Some("X".to_string());
-        let config = make_table_config(vec![make_field("id", ValueKind::Text, true, None), field]);
-        let err = config.validate().unwrap_err();
-        let msg = format!("{:#}", err);
+        let field = FieldConfig {
+            name: "flag".to_string(),
+            value_kind: ValueKind::Boolean,
+            true_sentinel: Some("X".to_string()),
+            false_sentinel: Some("X".to_string()),
+            ..Default::default()
+        };
+        let msg = format!("{:#}", field.validate().unwrap_err());
         assert!(msg.contains("'true' and 'false' sentinels"), "got: {msg}");
     }
 
     #[test]
     fn test_validate_rejects_true_sentinel_collision_with_null() {
-        let mut field = make_field("flag", ValueKind::Boolean, false, Some("X"));
-        field.true_sentinel = Some("X".to_string());
-        let config = make_table_config(vec![make_field("id", ValueKind::Text, true, None), field]);
-        let err = config.validate().unwrap_err();
-        let msg = format!("{:#}", err);
+        let field = FieldConfig {
+            name: "flag".to_string(),
+            value_kind: ValueKind::Boolean,
+            null_sentinel: Some("X".to_string()),
+            true_sentinel: Some("X".to_string()),
+            ..Default::default()
+        };
+        let msg = format!("{:#}", field.validate().unwrap_err());
         assert!(msg.contains("'true' and 'null' sentinels"), "got: {msg}");
     }
 
     #[test]
     fn test_validate_rejects_false_sentinel_collision_with_null() {
-        let mut field = make_field("flag", ValueKind::Boolean, false, Some("X"));
-        field.false_sentinel = Some("X".to_string());
-        let config = make_table_config(vec![make_field("id", ValueKind::Text, true, None), field]);
-        let err = config.validate().unwrap_err();
-        let msg = format!("{:#}", err);
+        let field = FieldConfig {
+            name: "flag".to_string(),
+            value_kind: ValueKind::Boolean,
+            null_sentinel: Some("X".to_string()),
+            false_sentinel: Some("X".to_string()),
+            ..Default::default()
+        };
+        let msg = format!("{:#}", field.validate().unwrap_err());
         assert!(msg.contains("'false' and 'null' sentinels"), "got: {msg}");
     }
 
     #[test]
     fn test_validate_accepts_distinct_sentinels_on_boolean() {
-        let mut field = make_field("flag", ValueKind::Boolean, false, Some("?"));
-        field.true_sentinel = Some("Y".to_string());
-        field.false_sentinel = Some("N".to_string());
-        let config = make_table_config(vec![make_field("id", ValueKind::Text, true, None), field]);
-        config.validate().unwrap();
+        let field = FieldConfig {
+            name: "flag".to_string(),
+            value_kind: ValueKind::Boolean,
+            null_sentinel: Some("?".to_string()),
+            true_sentinel: Some("Y".to_string()),
+            false_sentinel: Some("N".to_string()),
+            ..Default::default()
+        };
+        field.validate().unwrap();
     }
 
     fn make_rule(tables: Vec<&str>, field: &str, regex: &str) -> FilterRule {
