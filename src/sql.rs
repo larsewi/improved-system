@@ -136,7 +136,7 @@ fn check_value_matches_field(value: &Value, field: &FieldConfig) -> Result<()> {
         return Ok(());
     }
 
-    let expected = ValueKind::from_config(&field.sql_type)
+    let expected = ValueKind::from_config(&field.value_kind)
         .with_context(|| format!("field '{}'", field.name))?;
     if value.kind() != expected {
         bail!(
@@ -504,7 +504,7 @@ mod tests {
                 .iter()
                 .map(|(name, primary_key)| FieldConfig {
                     name: name.to_string(),
-                    sql_type: "TEXT".to_string(),
+                    value_kind: "TEXT".to_string(),
                     primary_key: *primary_key,
                     null_sentinel: None,
                     true_sentinel: None,
@@ -671,10 +671,10 @@ mod tests {
         assert!(msg.contains("primary-key prefix"), "got: {msg}");
     }
 
-    fn make_field(name: &str, sql_type: &str, nullable: bool) -> FieldConfig {
+    fn make_field(name: &str, value_kind: &str, nullable: bool) -> FieldConfig {
         FieldConfig {
             name: name.to_string(),
-            sql_type: sql_type.to_string(),
+            value_kind: value_kind.to_string(),
             primary_key: false,
             null_sentinel: if nullable { Some("".to_string()) } else { None },
             true_sentinel: None,
@@ -723,7 +723,7 @@ mod tests {
         // Hub declares the subsidiary column as NUMBER. The wire passes the
         // resolve checks, but the inserted value is a Text.
         let mut table = dummy_table(&[("id", true), ("score", false)]);
-        table.fields[1].sql_type = "NUMBER".to_string();
+        table.fields[1].value_kind = "NUMBER".to_string();
         let config = dummy_config(HashMap::from([("t".to_string(), table)]));
 
         let mut delta = dummy_delta(&["id", "score"]);

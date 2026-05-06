@@ -230,7 +230,7 @@ fn parse_field_value(value: &str, field: &FieldConfig) -> Result<Value> {
     {
         return Ok(Value::Null);
     }
-    let kind = ValueKind::from_config(&field.sql_type)
+    let kind = ValueKind::from_config(&field.value_kind)
         .with_context(|| format!("field '{}'", field.name))?;
     if let ValueKind::Boolean = kind {
         let true_sentinel = field
@@ -256,7 +256,7 @@ mod tests {
     fn make_field(name: &str, primary_key: bool) -> FieldConfig {
         FieldConfig {
             name: name.to_string(),
-            sql_type: "TEXT".to_string(),
+            value_kind: "TEXT".to_string(),
             primary_key,
             null_sentinel: None,
             true_sentinel: None,
@@ -397,13 +397,13 @@ mod tests {
 
     fn make_typed_field(
         name: &str,
-        sql_type: &str,
+        value_kind: &str,
         primary_key: bool,
         null_sentinel: Option<&str>,
     ) -> FieldConfig {
         FieldConfig {
             name: name.to_string(),
-            sql_type: sql_type.to_string(),
+            value_kind: value_kind.to_string(),
             primary_key,
             null_sentinel: null_sentinel.map(str::to_string),
             true_sentinel: None,

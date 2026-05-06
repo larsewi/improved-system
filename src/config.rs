@@ -234,7 +234,7 @@ pub struct Config {
 pub struct FieldConfig {
     pub name: String,
     #[serde(rename = "type", default = "default_sql_type")]
-    pub sql_type: String,
+    pub value_kind: String,
     #[serde(rename = "primary-key", default)]
     pub primary_key: bool,
     #[serde(default, rename = "null")]
@@ -276,7 +276,7 @@ impl TableConfig {
                 );
             }
             if field.true_sentinel.is_some() || field.false_sentinel.is_some() {
-                let kind = ValueKind::from_config(&field.sql_type)
+                let kind = ValueKind::from_config(&field.value_kind)
                     .with_context(|| format!("field '{}'", field.name))?;
                 if kind != ValueKind::Boolean {
                     bail!(
@@ -531,13 +531,13 @@ mod tests {
 
     fn make_field(
         name: &str,
-        sql_type: &str,
+        value_kind: &str,
         primary_key: bool,
         null_sentinel: Option<&str>,
     ) -> FieldConfig {
         FieldConfig {
             name: name.to_string(),
-            sql_type: sql_type.to_string(),
+            value_kind: value_kind.to_string(),
             primary_key,
             null_sentinel: null_sentinel.map(|s| s.to_string()),
             true_sentinel: None,
