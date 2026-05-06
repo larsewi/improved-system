@@ -217,3 +217,30 @@ fn test_json_config_file() {
 
     common::assert_wire_roundtrip(&config, &patch);
 }
+
+#[test]
+fn test_compression_level_out_of_range() {
+    common::init_logging();
+    let tmp = tempfile::tempdir().unwrap();
+    common::write_config(
+        tmp.path(),
+        "config.toml",
+        r#"
+[compression]
+level = 999
+
+[tables.users]
+source = "users.csv"
+fields = [
+    { name = "id", type = "NUMBER", primary-key = true },
+    { name = "name", type = "TEXT" },
+]
+"#,
+    );
+
+    let err = format!("{:#}", Config::load(tmp.path()).unwrap_err());
+    assert!(
+        err.contains("compression.level"),
+        "should report out-of-range compression.level: {err}"
+    );
+}
