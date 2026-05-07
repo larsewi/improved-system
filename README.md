@@ -116,9 +116,9 @@ fields = [
 ]
 ```
 
-`BOOLEAN` fields can override the strings recognised as true and false. When
+`BOOLEAN` fields can override the strings recognized as true and false. When
 either override is set, only the configured strings are accepted — the
-defaults are not honoured alongside them. The `true`, `false`, and `null`
+defaults are not honored alongside them. The `true`, `false`, and `null`
 sentinels on a single field must all differ.
 
 ```toml
