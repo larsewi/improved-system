@@ -1081,6 +1081,34 @@ fields = [
     }
 
     #[test]
+    fn test_load_fails_when_both_toml_and_json_present() {
+        let dir = tempfile::tempdir().unwrap();
+        let minimal_toml = r#"
+[tables.users]
+source = "users.csv"
+fields = [
+    { name = "id", type = "NUMBER", primary-key = true },
+]
+"#;
+        let minimal_json = r#"{
+  "tables": {
+    "users": {
+      "source": "users.csv",
+      "fields": [{ "name": "id", "type": "NUMBER", "primary-key": true }]
+    }
+  }
+}"#;
+        fs::write(dir.path().join("config.toml"), minimal_toml).unwrap();
+        fs::write(dir.path().join("config.json"), minimal_json).unwrap();
+
+        let err = Config::load(dir.path()).expect_err("expected ambiguity error");
+        assert!(
+            err.to_string().contains("both config.toml and config.json"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
     fn test_invalid_include_regex_fails_to_load() {
         let toml_input = r#"
 [[filters.include]]
