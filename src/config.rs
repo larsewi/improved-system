@@ -574,46 +574,39 @@ impl Config {
 mod tests {
     use super::*;
 
-    fn make_field(
-        name: &str,
-        value_kind: ValueKind,
-        primary_key: bool,
-        null_sentinel: Option<&str>,
-    ) -> FieldConfig {
+    fn make_field(name: &str, primary_key: bool) -> FieldConfig {
         FieldConfig {
             name: name.to_string(),
-            value_kind,
             primary_key,
-            null_sentinel: null_sentinel.map(|s| s.to_string()),
             ..Default::default()
-        }
-    }
-
-    fn make_table_config(fields: Vec<FieldConfig>) -> TableConfig {
-        TableConfig {
-            source: "test.csv".to_string(),
-            header: false,
-            fields,
         }
     }
 
     #[test]
     fn test_ordered_field_names() {
-        let config = make_table_config(vec![
-            make_field("name", ValueKind::Text, false, None),
-            make_field("id", ValueKind::Number, true, None),
-            make_field("email", ValueKind::Text, false, None),
-        ]);
+        let config = TableConfig {
+            source: "test.csv".to_string(),
+            header: false,
+            fields: vec![
+                make_field("name", false),
+                make_field("id", true),
+                make_field("email", false),
+            ],
+        };
         assert_eq!(config.ordered_field_names(), vec!["id", "name", "email"]);
     }
 
     #[test]
     fn test_ordered_field_names_multiple_primary_keys() {
-        let config = make_table_config(vec![
-            make_field("value", ValueKind::Text, false, None),
-            make_field("pk_b", ValueKind::Text, true, None),
-            make_field("pk_a", ValueKind::Text, true, None),
-        ]);
+        let config = TableConfig {
+            source: "test.csv".to_string(),
+            header: false,
+            fields: vec![
+                make_field("value", false),
+                make_field("pk_b", true),
+                make_field("pk_a", true),
+            ],
+        };
         // PKs in declaration order, then subsidiaries
         assert_eq!(config.ordered_field_names(), vec!["pk_b", "pk_a", "value"]);
     }
@@ -706,8 +699,7 @@ mod tests {
     fn test_should_filter_max_field_length() {
         let filter = FilterConfig {
             max_field_length: Some(5),
-            include: vec![],
-            exclude: vec![],
+            ..Default::default()
         };
         let fields = vec!["id".to_string(), "name".to_string()];
 
@@ -726,9 +718,8 @@ mod tests {
     #[test]
     fn test_should_filter_exclude_anchored_regex() {
         let filter = FilterConfig {
-            max_field_length: None,
-            include: vec![],
             exclude: vec![make_rule(vec![], "status", "^inactive$")],
+            ..Default::default()
         };
         let fields = vec!["id".to_string(), "status".to_string()];
 
@@ -753,9 +744,8 @@ mod tests {
     #[test]
     fn test_should_filter_exclude_unanchored_regex() {
         let filter = FilterConfig {
-            max_field_length: None,
-            include: vec![],
             exclude: vec![make_rule(vec![], "desc", "DEPRECATED")],
+            ..Default::default()
         };
         let fields = vec!["id".to_string(), "desc".to_string()];
 
@@ -774,9 +764,8 @@ mod tests {
     #[test]
     fn test_should_filter_exclude_alternation_regex() {
         let filter = FilterConfig {
-            max_field_length: None,
-            include: vec![],
             exclude: vec![make_rule(vec![], "status", "^(inactive|archived)$")],
+            ..Default::default()
         };
         let fields = vec!["id".to_string(), "status".to_string()];
 
@@ -802,9 +791,8 @@ mod tests {
     #[test]
     fn test_should_filter_exclude_skipped_when_field_not_in_table() {
         let filter = FilterConfig {
-            max_field_length: None,
-            include: vec![],
             exclude: vec![make_rule(vec![], "nonexistent", "^value$")],
+            ..Default::default()
         };
         let fields = vec!["id".to_string(), "name".to_string()];
 
@@ -818,9 +806,8 @@ mod tests {
     #[test]
     fn test_should_filter_exclude_table_scoped() {
         let filter = FilterConfig {
-            max_field_length: None,
-            include: vec![],
             exclude: vec![make_rule(vec!["users"], "status", "^inactive$")],
+            ..Default::default()
         };
         let fields = vec!["id".to_string(), "status".to_string()];
 
@@ -841,9 +828,8 @@ mod tests {
     #[test]
     fn test_should_filter_exclude_multiple_tables() {
         let filter = FilterConfig {
-            max_field_length: None,
-            include: vec![],
             exclude: vec![make_rule(vec!["users", "admins"], "status", "^inactive$")],
+            ..Default::default()
         };
         let fields = vec!["id".to_string(), "status".to_string()];
 
@@ -900,9 +886,8 @@ fields = [
     #[test]
     fn test_should_filter_include_match_keeps_record() {
         let filter = FilterConfig {
-            max_field_length: None,
             include: vec![make_rule(vec![], "status", "^(active|pending)$")],
-            exclude: vec![],
+            ..Default::default()
         };
         let fields = vec!["id".to_string(), "status".to_string()];
 
@@ -921,9 +906,8 @@ fields = [
     #[test]
     fn test_should_filter_include_no_match_drops_record() {
         let filter = FilterConfig {
-            max_field_length: None,
             include: vec![make_rule(vec![], "status", "^(active|pending)$")],
-            exclude: vec![],
+            ..Default::default()
         };
         let fields = vec!["id".to_string(), "status".to_string()];
 
@@ -937,9 +921,8 @@ fields = [
     #[test]
     fn test_should_filter_include_unanchored_regex() {
         let filter = FilterConfig {
-            max_field_length: None,
             include: vec![make_rule(vec![], "desc", "PRODUCTION")],
-            exclude: vec![],
+            ..Default::default()
         };
         let fields = vec!["id".to_string(), "desc".to_string()];
 
@@ -960,12 +943,11 @@ fields = [
     #[test]
     fn test_should_filter_include_or_semantics() {
         let filter = FilterConfig {
-            max_field_length: None,
             include: vec![
                 make_rule(vec![], "status", "^active$"),
                 make_rule(vec![], "status", "^pending$"),
             ],
-            exclude: vec![],
+            ..Default::default()
         };
         let fields = vec!["id".to_string(), "status".to_string()];
 
@@ -991,9 +973,8 @@ fields = [
     #[test]
     fn test_should_filter_include_skipped_when_field_not_in_table() {
         let filter = FilterConfig {
-            max_field_length: None,
             include: vec![make_rule(vec![], "nonexistent", "^value$")],
-            exclude: vec![],
+            ..Default::default()
         };
         let fields = vec!["id".to_string(), "name".to_string()];
 
@@ -1009,9 +990,8 @@ fields = [
     #[test]
     fn test_should_filter_include_no_applicable_rule_keeps_record() {
         let filter = FilterConfig {
-            max_field_length: None,
             include: vec![make_rule(vec!["users"], "status", "^active$")],
-            exclude: vec![],
+            ..Default::default()
         };
         let fields = vec!["id".to_string(), "status".to_string()];
 
@@ -1025,9 +1005,8 @@ fields = [
     #[test]
     fn test_should_filter_include_table_scoped() {
         let filter = FilterConfig {
-            max_field_length: None,
             include: vec![make_rule(vec!["users"], "status", "^active$")],
-            exclude: vec![],
+            ..Default::default()
         };
         let fields = vec!["id".to_string(), "status".to_string()];
 
@@ -1056,9 +1035,9 @@ fields = [
     #[test]
     fn test_should_filter_exclude_wins_over_include() {
         let filter = FilterConfig {
-            max_field_length: None,
             include: vec![make_rule(vec![], "status", "^(active|pending)$")],
             exclude: vec![make_rule(vec![], "status", "^pending$")],
+            ..Default::default()
         };
         let fields = vec!["id".to_string(), "status".to_string()];
 
