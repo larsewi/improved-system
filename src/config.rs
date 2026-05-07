@@ -574,46 +574,39 @@ impl Config {
 mod tests {
     use super::*;
 
-    fn make_field(
-        name: &str,
-        value_kind: ValueKind,
-        primary_key: bool,
-        null_sentinel: Option<&str>,
-    ) -> FieldConfig {
+    fn make_field(name: &str, primary_key: bool) -> FieldConfig {
         FieldConfig {
             name: name.to_string(),
-            value_kind,
             primary_key,
-            null_sentinel: null_sentinel.map(|s| s.to_string()),
             ..Default::default()
-        }
-    }
-
-    fn make_table_config(fields: Vec<FieldConfig>) -> TableConfig {
-        TableConfig {
-            source: "test.csv".to_string(),
-            header: false,
-            fields,
         }
     }
 
     #[test]
     fn test_ordered_field_names() {
-        let config = make_table_config(vec![
-            make_field("name", ValueKind::Text, false, None),
-            make_field("id", ValueKind::Number, true, None),
-            make_field("email", ValueKind::Text, false, None),
-        ]);
+        let config = TableConfig {
+            source: "test.csv".to_string(),
+            header: false,
+            fields: vec![
+                make_field("name", false),
+                make_field("id", true),
+                make_field("email", false),
+            ],
+        };
         assert_eq!(config.ordered_field_names(), vec!["id", "name", "email"]);
     }
 
     #[test]
     fn test_ordered_field_names_multiple_primary_keys() {
-        let config = make_table_config(vec![
-            make_field("value", ValueKind::Text, false, None),
-            make_field("pk_b", ValueKind::Text, true, None),
-            make_field("pk_a", ValueKind::Text, true, None),
-        ]);
+        let config = TableConfig {
+            source: "test.csv".to_string(),
+            header: false,
+            fields: vec![
+                make_field("value", false),
+                make_field("pk_b", true),
+                make_field("pk_a", true),
+            ],
+        };
         // PKs in declaration order, then subsidiaries
         assert_eq!(config.ordered_field_names(), vec!["pk_b", "pk_a", "value"]);
     }
