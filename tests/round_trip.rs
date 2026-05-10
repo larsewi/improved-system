@@ -202,11 +202,11 @@ impl HubSim {
         Self { schema }
     }
 
-    /// Run a SQL script through `psql`, prefixed with `SET search_path` so
-    /// unqualified identifiers in leech2's generated SQL resolve into the
-    /// per-run schema. Returns the raw stdout (CSV rows for SELECT,
-    /// otherwise empty). Bails on any non-zero exit, surfacing stderr and
-    /// the offending SQL.
+    /// Run a SQL script through `psql`. The connection's `search_path` is
+    /// set to the per-run schema via `PGOPTIONS` (rather than an in-band
+    /// `SET`) so the command tag from that statement doesn't appear in
+    /// stdout and pollute CSV parsing. Bails on any non-zero exit,
+    /// surfacing stderr and the offending SQL.
     fn psql(&self, sql: &str) -> Result<String> {
         let mut child = Command::new("psql")
             // Ignore local configs.
@@ -219,25 +219,25 @@ impl HubSim {
             .arg("--csv")
             // Abort on the first SQL error and exit non-zero.
             .arg("--variable=ON_ERROR_STOP=1")
+            // Resolve unqualified identifiers in leech2's generated SQL
+            // into the per-run schema.
+            .env("PGOPTIONS", format!("-c search_path={}", self.schema))
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
             .context("failed to spawn psql")?;
 
-        let prelude = format!("SET search_path TO {};\n", quote_identifier(&self.schema));
         let mut stdin = child.stdin.take().context("missing psql stdin")?;
-        stdin.write_all(prelude.as_bytes())?;
         stdin.write_all(sql.as_bytes())?;
         drop(stdin);
 
         let output = child.wait_with_output().context("failed to wait on psql")?;
         if !output.status.success() {
             bail!(
-                "psql failed (status={}):\nstderr: {}\nsql:\n{}{}",
+                "psql failed (status={}):\nstderr: {}\nsql:\n{}",
                 output.status,
                 String::from_utf8_lossy(&output.stderr),
-                prelude,
                 sql,
             );
         }
