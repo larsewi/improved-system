@@ -180,8 +180,7 @@ fn random_name(rng: &mut StdRng) -> String {
 /// No commas or quotes appear in the output, keeping CSV comparisons literal.
 fn random_email(rng: &mut StdRng) -> String {
     const DOMAINS: &[&str] = &["example.com", "test.org", "leech2.dev"];
-    let user_idx = rng.random_range(0..6);
-    let user = (b'a' + user_idx as u8) as char;
+    let user = random_name(rng);
     let domain = DOMAINS
         .iter()
         .copied()
