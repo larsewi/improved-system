@@ -26,7 +26,7 @@ use rand::seq::{IndexedRandom, IteratorRandom};
 use rand::{Rng, SeedableRng};
 
 const ROUNDS: usize = 50;
-const SHIP_PROBABILITY: f64 = 0.7;
+const SHIP_PROBABILITY: f64 = 0.3;
 const DEFAULT_SEED: u64 = 0xdead_beef_cafe_f00d;
 
 const CONFIG_TOML: &str = r#"
