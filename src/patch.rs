@@ -296,7 +296,7 @@ fn full_state_patch(work_dir: &Path, head: &str, injected_fields: Vec<Field>) ->
         deltas: HashMap::new(),
         states: state.tables,
     };
-    log::trace!("Built patch:\n{}", patch);
+    log::info!("Consolidated patch:\n{}", patch);
     Ok(patch)
 }
 
@@ -322,7 +322,7 @@ impl Patch {
                 deltas: HashMap::new(),
                 states: HashMap::new(),
             };
-            log::trace!("Built patch:\n{}", patch);
+            log::info!("Consolidated patch:\n{}", patch);
             return Ok(patch);
         }
 
@@ -362,7 +362,7 @@ impl Patch {
             states,
         };
 
-        log::trace!("Built patch:\n{}", patch);
+        log::info!("Consolidated patch:\n{}", patch);
         Ok(patch)
     }
 

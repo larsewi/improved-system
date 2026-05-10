@@ -113,8 +113,6 @@ impl Block {
             created,
             payload,
         };
-        log::trace!("{}", block);
-
         let mut encoded = Vec::new();
         block
             .encode(&mut encoded)
@@ -123,7 +121,7 @@ impl Block {
         storage::store(work_dir, &hash, &encoded)
             .with_context(|| format!("failed to store block {:.7}", hash))?;
 
-        log::info!("Created block '{:.7}...'", hash);
+        log::info!("Created block '{:.7}...': {}", hash, block);
 
         current_state
             .store(work_dir)
