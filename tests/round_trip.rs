@@ -32,7 +32,7 @@ use rand::seq::{IndexedRandom, IteratorRandom};
 use rand::{Rng, SeedableRng};
 
 const NUM_AGENTS: usize = 3;
-const ROUNDS: usize = 50;
+const ROUNDS: usize = 100;
 const MUTATIONS_PER_BLOCK_MAX: usize = 10;
 const SHIP_PROBABILITY: f64 = 0.3;
 const DEFAULT_SEED: u64 = 0xdead_beef_cafe_f00d;
