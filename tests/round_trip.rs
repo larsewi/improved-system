@@ -467,6 +467,134 @@ struct AgentRun {
     last_known: String,
 }
 
+/// Build `NUM_AGENTS` agents, each with its own work directory and
+/// freshly-bootstrapped per-agent Postgres schema. Schema-change rounds
+/// are picked here so the schedule is part of the seeded plan rather
+/// than something to recompute mid-loop.
+fn setup_agents(rng: &mut StdRng, base_dir: &Path, seed: u64) -> Vec<AgentRun> {
+    let mut agents = Vec::with_capacity(NUM_AGENTS);
+    for i in 0..NUM_AGENTS {
+        let name = format!("agent{}", char::from(b'a' + i as u8));
+        let agent_dir = base_dir.join(&name);
+        std::fs::create_dir_all(&agent_dir).unwrap();
+        let agent = AgentSim::new(&agent_dir).unwrap();
+
+        let agent_schema = HubSim::new(format!("rt_{seed}_{name}"));
+        agent_schema.bootstrap(AGENT_SCHEMA_DDL).unwrap();
+
+        let schema_change_rounds: HashSet<usize> =
+            (0..ROUNDS).choose_multiple(rng, 2).into_iter().collect();
+        log::info!("Agent '{name}': scheduled schema changes at rounds {schema_change_rounds:?}");
+
+        agents.push(AgentRun {
+            name,
+            agent,
+            agent_schema,
+            schema_change_rounds,
+            last_known: GENESIS_HASH.to_string(),
+        });
+    }
+    agents
+}
+
+/// Apply a patch (if it produced any SQL) and verify the resulting rows
+/// match the agent's model. `host_filter` scopes the verification to one
+/// agent's rows when the target is the shared hub schema.
+fn ship_and_verify(
+    target: &HubSim,
+    sql: Option<&str>,
+    agent: &AgentSim,
+    host_filter: Option<&str>,
+) -> Result<()> {
+    if let Some(sql) = sql {
+        target.apply(sql)?;
+    }
+    target.assert_matches(agent, host_filter)?;
+    Ok(())
+}
+
+/// Run one round for a single agent: maybe toggle the schema, apply
+/// random mutations, create a block, and (with `SHIP_PROBABILITY`)
+/// ship the resulting patch to both the per-agent schema and the
+/// shared hub schema with the host injected. The last round forces a
+/// ship so every agent's final state is verified end-to-end.
+fn run_round_for_agent(
+    rng: &mut StdRng,
+    run: &mut AgentRun,
+    hub: &HubSim,
+    round: usize,
+    seed: u64,
+) {
+    if run.schema_change_rounds.contains(&round) {
+        run.agent.toggle_email_active(rng);
+    }
+    let mutations = rng.random_range(0..=MUTATIONS_PER_BLOCK_MAX);
+    for _ in 0..mutations {
+        run.agent.mutate(rng);
+    }
+    // Reload Config after mutations so a schema-change mutation's new
+    // config.toml is observed by Block::create and Patch::create.
+    let config = Config::load(&run.agent.work_dir).unwrap();
+    log::info!(
+        "Agent '{}' round {}/{}: applied {} mutation(s), model has {} row(s)",
+        run.name,
+        round + 1,
+        ROUNDS,
+        mutations,
+        run.agent.model.len(),
+    );
+    run.agent.write_csv().unwrap();
+    let head = Block::create(&config).unwrap();
+
+    let force_ship = round + 1 == ROUNDS;
+    if !force_ship && !rng.random_bool(SHIP_PROBABILITY) {
+        log::info!(
+            "Agent '{}' round {}/{}: not shipping this round",
+            run.name,
+            round + 1,
+            ROUNDS
+        );
+        return;
+    }
+
+    log::info!(
+        "Agent '{}' round {}/{}: shipping patch from '{:.7}...' to '{:.7}...'",
+        run.name,
+        round + 1,
+        ROUNDS,
+        run.last_known,
+        head,
+    );
+    let mut patch = Patch::create(&config, &run.last_known).unwrap();
+
+    let agent_sql = sql::patch_to_sql(&config, &patch).unwrap();
+    ship_and_verify(&run.agent_schema, agent_sql.as_deref(), &run.agent, None).unwrap_or_else(
+        |e| {
+            panic!(
+                "seed={seed} agent={} round={round}: agent schema failed: {e:#}",
+                run.name
+            )
+        },
+    );
+
+    patch.inject_field("host", &run.name, "TEXT").unwrap();
+    let hub_sql = sql::patch_to_sql(&config, &patch).unwrap();
+    ship_and_verify(hub, hub_sql.as_deref(), &run.agent, Some(&run.name)).unwrap_or_else(|e| {
+        panic!(
+            "seed={seed} agent={} round={round}: hub schema failed: {e:#}",
+            run.name
+        )
+    });
+
+    log::info!(
+        "Agent '{}' round {}/{}: agent and hub schemas both match model",
+        run.name,
+        round + 1,
+        ROUNDS
+    );
+    run.last_known = head;
+}
+
 #[test]
 #[ignore = "requires PGHOST; run via `cargo test -- --include-ignored`"]
 fn round_trip_multi_agent() {
@@ -482,126 +610,14 @@ fn round_trip_multi_agent() {
     let mut rng = StdRng::seed_from_u64(seed);
 
     let tmp = tempfile::tempdir().unwrap();
-
-    // Set up per-agent schemas plus the shared hub schema. Each agent's
-    // patches go straight to its own schema; the same patch with a `host`
-    // field injected goes to the hub schema, so the hub holds a
-    // host-scoped consolidated view across all agents.
-    let mut agents: Vec<AgentRun> = Vec::with_capacity(NUM_AGENTS);
-    for i in 0..NUM_AGENTS {
-        let name = format!("agent{}", char::from(b'a' + i as u8));
-        let agent_dir = tmp.path().join(&name);
-        std::fs::create_dir_all(&agent_dir).unwrap();
-        let agent = AgentSim::new(&agent_dir).unwrap();
-
-        let agent_schema = HubSim::new(format!("rt_{seed}_{name}"));
-        agent_schema.bootstrap(AGENT_SCHEMA_DDL).unwrap();
-
-        let schema_change_rounds: HashSet<usize> = (0..ROUNDS)
-            .choose_multiple(&mut rng, 2)
-            .into_iter()
-            .collect();
-        log::info!("Agent '{name}': scheduled schema changes at rounds {schema_change_rounds:?}");
-
-        agents.push(AgentRun {
-            name,
-            agent,
-            agent_schema,
-            schema_change_rounds,
-            last_known: GENESIS_HASH.to_string(),
-        });
-    }
+    let mut agents = setup_agents(&mut rng, tmp.path(), seed);
 
     let hub = HubSim::new(format!("rt_{seed}_hub"));
     hub.bootstrap(HUB_SCHEMA_DDL).unwrap();
 
     for round in 0..ROUNDS {
         for run in &mut agents {
-            if run.schema_change_rounds.contains(&round) {
-                run.agent.toggle_email_active(&mut rng);
-            }
-            let mutations = rng.random_range(0..=MUTATIONS_PER_BLOCK_MAX);
-            for _ in 0..mutations {
-                run.agent.mutate(&mut rng);
-            }
-            // Reload Config after mutations so a schema-change mutation's
-            // new config.toml is observed by Block::create and Patch::create.
-            let config = Config::load(&run.agent.work_dir).unwrap();
-            log::info!(
-                "Agent '{}' round {}/{}: applied {} mutation(s), model has {} row(s)",
-                run.name,
-                round + 1,
-                ROUNDS,
-                mutations,
-                run.agent.model.len(),
-            );
-            run.agent.write_csv().unwrap();
-            let head = Block::create(&config).unwrap();
-
-            let force_ship = round + 1 == ROUNDS;
-            if !force_ship && !rng.random_bool(SHIP_PROBABILITY) {
-                log::info!(
-                    "Agent '{}' round {}/{}: not shipping this round",
-                    run.name,
-                    round + 1,
-                    ROUNDS
-                );
-                continue;
-            }
-
-            log::info!(
-                "Agent '{}' round {}/{}: shipping patch from '{:.7}...' to '{:.7}...'",
-                run.name,
-                round + 1,
-                ROUNDS,
-                run.last_known,
-                head,
-            );
-            let mut patch = Patch::create(&config, &run.last_known).unwrap();
-
-            // Per-agent schema: apply patch as-is.
-            if let Some(sql) = sql::patch_to_sql(&config, &patch).unwrap() {
-                run.agent_schema.apply(&sql).unwrap_or_else(|e| {
-                    panic!(
-                        "seed={seed} agent={} round={round}: agent schema apply failed:\n{e:#}",
-                        run.name
-                    )
-                });
-            }
-            run.agent_schema
-                .assert_matches(&run.agent, None)
-                .unwrap_or_else(|e| {
-                    panic!(
-                        "seed={seed} agent={} round={round}: agent schema verify failed: {e:#}",
-                        run.name
-                    )
-                });
-
-            // Hub schema: inject the host field, regenerate SQL, apply.
-            patch.inject_field("host", &run.name, "TEXT").unwrap();
-            if let Some(sql) = sql::patch_to_sql(&config, &patch).unwrap() {
-                hub.apply(&sql).unwrap_or_else(|e| {
-                    panic!(
-                        "seed={seed} agent={} round={round}: hub schema apply failed:\n{e:#}",
-                        run.name
-                    )
-                });
-            }
-            hub.assert_matches(&run.agent, Some(&run.name))
-                .unwrap_or_else(|e| {
-                    panic!(
-                        "seed={seed} agent={} round={round}: hub schema verify failed: {e:#}",
-                        run.name
-                    )
-                });
-
-            log::info!(
-                "Agent '{}' round {}/{}: agent and hub schemas both match model",
-                run.name,
-                round + 1,
-                ROUNDS
-            );
-            run.last_known = head;
+            run_round_for_agent(&mut rng, run, &hub, round, seed);
         }
     }
 
