@@ -387,13 +387,14 @@ fn round_trip_phase1_single_agent() {
 
         let force_ship = round + 1 == ROUNDS;
         if !force_ship && !rng.random_bool(SHIP_PROBABILITY) {
-            log::info!("Round {}: not shipping this round", round + 1);
+            log::info!("Round {}/{}: not shipping this round", round + 1, ROUNDS);
             continue;
         }
 
         log::info!(
-            "Round {}: shipping patch from '{:.7}...' to '{:.7}...'",
+            "Round {}/{}: shipping patch from '{:.7}...' to '{:.7}...'",
             round + 1,
+            ROUNDS,
             last_known,
             head,
         );
@@ -404,7 +405,7 @@ fn round_trip_phase1_single_agent() {
         }
         hub.assert_matches(&agent.model)
             .unwrap_or_else(|e| panic!("seed={seed} round={round}: {e:#}"));
-        log::info!("Round {}: hub state matches agent model", round + 1);
+        log::info!("Round {}/{}: hub state matches agent model", round + 1, ROUNDS);
         last_known = head;
     }
 
