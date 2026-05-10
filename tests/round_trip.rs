@@ -1,16 +1,21 @@
 //! Round-trip property test.
 //!
-//! Drives a single agent through a seeded sequence of mutations, ships
-//! patches to a real Postgres instance via `psql`, and asserts that the
-//! hub's row state matches the agent's CSV state after every ship.
-//! Mutations include rare schema changes that exercise the
-//! layout-fallback path.
+//! Drives several agents in parallel through seeded sequences of mutations.
+//! Each agent ships its patches twice on every round it ships:
+//!
+//! 1. To its own per-agent Postgres schema (raw rows, no host column).
+//! 2. To a shared hub schema with a `host` field injected, scoping the
+//!    patch to that agent's rows in the consolidated view.
+//!
+//! After every ship both targets are queried and the rows are compared
+//! to the agent's in-memory model. Mutations include rare schema changes
+//! that exercise the layout-fallback path.
 //!
 //! Gated on `PGHOST`. Locally the test no-ops; CI sets the env vars.
 
 mod common;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::env;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -26,6 +31,7 @@ use rand::rngs::StdRng;
 use rand::seq::{IndexedRandom, IteratorRandom};
 use rand::{Rng, SeedableRng};
 
+const NUM_AGENTS: usize = 3;
 const ROUNDS: usize = 50;
 const MUTATIONS_PER_BLOCK_MAX: usize = 10;
 const SHIP_PROBABILITY: f64 = 0.3;
@@ -36,16 +42,30 @@ const DEFAULT_SEED: u64 = 0xdead_beef_cafe_f00d;
 /// to `Value::Null` and the resulting SQL writes `NULL` to the hub.
 const EMAIL_NULL_SENTINEL: &str = "N/A";
 
-/// The hub schema is the *superset* of every column the agent might ever
-/// declare — leech2's generated INSERTs only mention currently-active
-/// columns, so any column the agent has dropped just stays NULL on the hub.
-const HUB_SUPERSET_SQL: &str = r#"
+/// Per-agent schema DDL: the *superset* of every column the agent might
+/// ever declare. leech2's generated INSERTs only mention currently-active
+/// columns, so any column the agent has dropped just stays NULL.
+const AGENT_SCHEMA_DDL: &str = r#"
 CREATE TABLE "users" (
     "id" DOUBLE PRECISION,
     "name" TEXT,
     "email" TEXT,
     "active" BOOLEAN,
     PRIMARY KEY ("id")
+);
+"#;
+
+/// Shared hub schema DDL: same columns as the per-agent schema plus a
+/// `host` column. The composite primary key `(host, id)` lets multiple
+/// agents coexist without trampling each other's rows.
+const HUB_SCHEMA_DDL: &str = r#"
+CREATE TABLE "users" (
+    "host" TEXT,
+    "id" DOUBLE PRECISION,
+    "name" TEXT,
+    "email" TEXT,
+    "active" BOOLEAN,
+    PRIMARY KEY ("host", "id")
 );
 "#;
 
@@ -338,14 +358,12 @@ impl HubSim {
     }
 
     /// Drop the per-run schema if a previous run left one behind, recreate
-    /// it, and create the superset table. Run once at the start of the
-    /// test. The table holds every column the agent might ever declare —
-    /// see `HUB_SUPERSET_SQL` for why.
-    fn bootstrap(&self) -> Result<()> {
+    /// it, and run the supplied DDL. Per-agent schemas use
+    /// `AGENT_SCHEMA_DDL`; the shared hub schema uses `HUB_SCHEMA_DDL`.
+    fn bootstrap(&self, ddl: &str) -> Result<()> {
         let sql = format!(
             "DROP SCHEMA IF EXISTS {schema} CASCADE;\nCREATE SCHEMA {schema};\n{ddl}",
             schema = quote_identifier(&self.schema),
-            ddl = HUB_SUPERSET_SQL,
         );
         self.psql(&sql).context("bootstrap failed")?;
         Ok(())
@@ -358,24 +376,32 @@ impl HubSim {
         self.psql(sql).map(|_| ())
     }
 
-    /// Query every row in the hub and assert it equals the agent's model
-    /// row-for-row. This is the semantic check that catches merge-logic bugs:
-    /// syntactically valid SQL that produces the wrong final state still
-    /// mismatches here.
+    /// Query every row in the schema (optionally filtered by host) and
+    /// assert it equals the agent's model row-for-row. This is the
+    /// semantic check that catches merge-logic bugs: syntactically valid
+    /// SQL that produces the wrong final state still mismatches here.
     ///
     /// `active::text` casts the boolean to "true"/"false" (psql's default
     /// CSV format would render "t"/"f", which doesn't match what the agent
     /// wrote in the source CSV).
     ///
-    /// When `email_active` is false, the hub's email column should be NULL
-    /// for every row (the most recent ship was a TRUNCATE+INSERT that did
-    /// not name the column). When the agent emitted `EMAIL_NULL_SENTINEL`
-    /// for a particular row, leech2 wrote NULL for that cell. psql renders
+    /// When `email_active` is false, the email column should be NULL for
+    /// every row (the most recent ship was a TRUNCATE+INSERT that did not
+    /// name the column). When the agent emitted `EMAIL_NULL_SENTINEL` for
+    /// a particular row, leech2 wrote NULL for that cell. psql renders
     /// NULL as the empty string in CSV mode, so the expected row formats
     /// with an empty email field in both cases.
-    fn assert_matches(&self, agent: &AgentSim) -> Result<()> {
-        let csv =
-            self.psql("SELECT id, name, email, active::text FROM \"users\" ORDER BY id;\n")?;
+    ///
+    /// The optional `host_filter` scopes the query to a single agent's
+    /// rows in the shared hub schema.
+    fn assert_matches(&self, agent: &AgentSim, host_filter: Option<&str>) -> Result<()> {
+        let where_clause = match host_filter {
+            Some(host) => format!(" WHERE \"host\" = '{host}'"),
+            None => String::new(),
+        };
+        let csv = self.psql(&format!(
+            "SELECT id, name, email, active::text FROM \"users\"{where_clause} ORDER BY id;\n"
+        ))?;
         let hub_rows: Vec<String> = csv.lines().map(|s| s.to_string()).collect();
         let want_rows: Vec<String> = agent
             .model
@@ -428,9 +454,22 @@ fn read_seed() -> u64 {
         .unwrap_or_else(|e| panic!("ROUND_TRIP_SEED={raw:?} is not a valid u64: {e}"))
 }
 
+/// Per-agent state bundled together so the round loop can iterate cleanly.
+struct AgentRun {
+    name: String,
+    agent: AgentSim,
+    /// Per-agent target schema (raw rows, no host column).
+    agent_schema: HubSim,
+    /// Rounds at which this agent's email column toggles. Each agent picks
+    /// two distinct rounds so it exercises removing and re-adding the
+    /// column over the run.
+    schema_change_rounds: HashSet<usize>,
+    last_known: String,
+}
+
 #[test]
 #[ignore = "requires PGHOST; run via `cargo test -- --include-ignored`"]
-fn round_trip_single_agent() {
+fn round_trip_multi_agent() {
     common::init_logging();
 
     if env::var("PGHOST").is_err() {
@@ -443,70 +482,131 @@ fn round_trip_single_agent() {
     let mut rng = StdRng::seed_from_u64(seed);
 
     let tmp = tempfile::tempdir().unwrap();
-    let work_dir = tmp.path();
-    let mut agent = AgentSim::new(work_dir).unwrap();
 
-    let hub = HubSim::new(format!("rt_{seed}"));
-    hub.bootstrap().unwrap();
+    // Set up per-agent schemas plus the shared hub schema. Each agent's
+    // patches go straight to its own schema; the same patch with a `host`
+    // field injected goes to the hub schema, so the hub holds a
+    // host-scoped consolidated view across all agents.
+    let mut agents: Vec<AgentRun> = Vec::with_capacity(NUM_AGENTS);
+    for i in 0..NUM_AGENTS {
+        let name = format!("agent{}", char::from(b'a' + i as u8));
+        let agent_dir = tmp.path().join(&name);
+        std::fs::create_dir_all(&agent_dir).unwrap();
+        let agent = AgentSim::new(&agent_dir).unwrap();
 
-    // Pick two distinct rounds for schema changes so the test exercises
-    // both removing the column and re-adding it (since email starts
-    // active, the first toggle removes and the second re-adds).
-    let schema_change_rounds: std::collections::HashSet<usize> = (0..ROUNDS)
-        .choose_multiple(&mut rng, 2)
-        .into_iter()
-        .collect();
-    log::info!("Scheduled schema changes at rounds {schema_change_rounds:?}");
+        let agent_schema = HubSim::new(format!("rt_{seed}_{name}"));
+        agent_schema.bootstrap(AGENT_SCHEMA_DDL).unwrap();
 
-    let mut last_known = GENESIS_HASH.to_string();
-    for round in 0..ROUNDS {
-        if schema_change_rounds.contains(&round) {
-            agent.toggle_email_active(&mut rng);
-        }
-        let mutations = rng.random_range(0..=MUTATIONS_PER_BLOCK_MAX);
-        for _ in 0..mutations {
-            agent.mutate(&mut rng);
-        }
-        // Reload Config after mutations so a schema-change mutation's new
-        // config.toml is observed by Block::create and Patch::create.
-        let config = Config::load(work_dir).unwrap();
-        log::info!(
-            "Round {}/{}: applied {} mutation(s), model has {} row(s)",
-            round + 1,
-            ROUNDS,
-            mutations,
-            agent.model.len(),
-        );
-        agent.write_csv().unwrap();
-        let head = Block::create(&config).unwrap();
+        let schema_change_rounds: HashSet<usize> = (0..ROUNDS)
+            .choose_multiple(&mut rng, 2)
+            .into_iter()
+            .collect();
+        log::info!("Agent '{name}': scheduled schema changes at rounds {schema_change_rounds:?}");
 
-        let force_ship = round + 1 == ROUNDS;
-        if !force_ship && !rng.random_bool(SHIP_PROBABILITY) {
-            log::info!("Round {}/{}: not shipping this round", round + 1, ROUNDS);
-            continue;
-        }
-
-        log::info!(
-            "Round {}/{}: shipping patch from '{:.7}...' to '{:.7}...'",
-            round + 1,
-            ROUNDS,
-            last_known,
-            head,
-        );
-        let patch = Patch::create(&config, &last_known).unwrap();
-        if let Some(sql) = sql::patch_to_sql(&config, &patch).unwrap() {
-            hub.apply(&sql)
-                .unwrap_or_else(|e| panic!("seed={seed} round={round}: psql apply failed:\n{e:#}"));
-        }
-        hub.assert_matches(&agent)
-            .unwrap_or_else(|e| panic!("seed={seed} round={round}: {e:#}"));
-        log::info!(
-            "Round {}/{}: hub state matches agent model",
-            round + 1,
-            ROUNDS
-        );
-        last_known = head;
+        agents.push(AgentRun {
+            name,
+            agent,
+            agent_schema,
+            schema_change_rounds,
+            last_known: GENESIS_HASH.to_string(),
+        });
     }
 
+    let hub = HubSim::new(format!("rt_{seed}_hub"));
+    hub.bootstrap(HUB_SCHEMA_DDL).unwrap();
+
+    for round in 0..ROUNDS {
+        for run in &mut agents {
+            if run.schema_change_rounds.contains(&round) {
+                run.agent.toggle_email_active(&mut rng);
+            }
+            let mutations = rng.random_range(0..=MUTATIONS_PER_BLOCK_MAX);
+            for _ in 0..mutations {
+                run.agent.mutate(&mut rng);
+            }
+            // Reload Config after mutations so a schema-change mutation's
+            // new config.toml is observed by Block::create and Patch::create.
+            let config = Config::load(&run.agent.work_dir).unwrap();
+            log::info!(
+                "Agent '{}' round {}/{}: applied {} mutation(s), model has {} row(s)",
+                run.name,
+                round + 1,
+                ROUNDS,
+                mutations,
+                run.agent.model.len(),
+            );
+            run.agent.write_csv().unwrap();
+            let head = Block::create(&config).unwrap();
+
+            let force_ship = round + 1 == ROUNDS;
+            if !force_ship && !rng.random_bool(SHIP_PROBABILITY) {
+                log::info!(
+                    "Agent '{}' round {}/{}: not shipping this round",
+                    run.name,
+                    round + 1,
+                    ROUNDS
+                );
+                continue;
+            }
+
+            log::info!(
+                "Agent '{}' round {}/{}: shipping patch from '{:.7}...' to '{:.7}...'",
+                run.name,
+                round + 1,
+                ROUNDS,
+                run.last_known,
+                head,
+            );
+            let mut patch = Patch::create(&config, &run.last_known).unwrap();
+
+            // Per-agent schema: apply patch as-is.
+            if let Some(sql) = sql::patch_to_sql(&config, &patch).unwrap() {
+                run.agent_schema.apply(&sql).unwrap_or_else(|e| {
+                    panic!(
+                        "seed={seed} agent={} round={round}: agent schema apply failed:\n{e:#}",
+                        run.name
+                    )
+                });
+            }
+            run.agent_schema
+                .assert_matches(&run.agent, None)
+                .unwrap_or_else(|e| {
+                    panic!(
+                        "seed={seed} agent={} round={round}: agent schema verify failed: {e:#}",
+                        run.name
+                    )
+                });
+
+            // Hub schema: inject the host field, regenerate SQL, apply.
+            patch.inject_field("host", &run.name, "TEXT").unwrap();
+            if let Some(sql) = sql::patch_to_sql(&config, &patch).unwrap() {
+                hub.apply(&sql).unwrap_or_else(|e| {
+                    panic!(
+                        "seed={seed} agent={} round={round}: hub schema apply failed:\n{e:#}",
+                        run.name
+                    )
+                });
+            }
+            hub.assert_matches(&run.agent, Some(&run.name))
+                .unwrap_or_else(|e| {
+                    panic!(
+                        "seed={seed} agent={} round={round}: hub schema verify failed: {e:#}",
+                        run.name
+                    )
+                });
+
+            log::info!(
+                "Agent '{}' round {}/{}: agent and hub schemas both match model",
+                run.name,
+                round + 1,
+                ROUNDS
+            );
+            run.last_known = head;
+        }
+    }
+
+    for run in &agents {
+        let _ = run.agent_schema.cleanup();
+    }
     let _ = hub.cleanup();
 }
