@@ -375,14 +375,28 @@ fn round_trip_phase1_single_agent() {
         for _ in 0..mutations {
             agent.mutate(&mut rng);
         }
+        log::info!(
+            "Round {}/{}: applied {} mutation(s), model has {} row(s)",
+            round + 1,
+            ROUNDS,
+            mutations,
+            agent.model.len(),
+        );
         agent.write_csv().unwrap();
         let head = Block::create(&config).unwrap();
 
         let force_ship = round + 1 == ROUNDS;
         if !force_ship && !rng.random_bool(SHIP_PROBABILITY) {
+            log::info!("Round {}: not shipping this round", round + 1);
             continue;
         }
 
+        log::info!(
+            "Round {}: shipping patch from '{:.7}...' to '{:.7}...'",
+            round + 1,
+            last_known,
+            head,
+        );
         let patch = Patch::create(&config, &last_known).unwrap();
         if let Some(sql) = sql::patch_to_sql(&config, &patch).unwrap() {
             hub.apply(&sql)
@@ -390,6 +404,7 @@ fn round_trip_phase1_single_agent() {
         }
         hub.assert_matches(&agent.model)
             .unwrap_or_else(|e| panic!("seed={seed} round={round}: {e:#}"));
+        log::info!("Round {}: hub state matches agent model", round + 1);
         last_known = head;
     }
 
