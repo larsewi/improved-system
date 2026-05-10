@@ -254,7 +254,7 @@ fn try_consolidate(work_dir: &Path, head: &str, last_known: &str) -> Result<Cons
 
         let pre = pre_counts.get(&table_name).copied().unwrap_or_default();
         log::info!(
-            "Table '{}': consolidated {} block(s); inserts {}→{}, updates {}→{}, deletes {}→{}",
+            "Table '{}': consolidated {} block(s); inserts {}->{}, updates {}->{}, deletes {}->{}",
             table_name,
             num_blocks,
             pre.inserts,
