@@ -3,12 +3,10 @@ name: Round-trip
 on:
   pull_request:
     branches: ["master"]
-  push:
-    branches: ["master"]
   workflow_dispatch:
     inputs:
       seed:
-        description: "Seed for the mutation generator (leave blank for the default)"
+        description: "Seed for the mutation generator (leave blank for a random seed)"
         required: false
         type: string
 
