@@ -226,6 +226,57 @@ rows are replaced and other agents' data is preserved.
 
 See `tests/accept_recovery.rs` for acceptance tests covering these scenarios.
 
+## Round-trip test
+
+`tests/round_trip.rs` is an end-to-end property test that drives leech2 against
+a real PostgreSQL instance. The acceptance tests under `tests/accept_*.rs`
+verify SQL **shape** (counts of `INSERT` / `UPDATE` / `DELETE`); the round-trip
+test additionally verifies SQL **semantics** by applying the generated SQL
+through `psql` and asserting that the hub's row state matches the agent's
+in-memory model after every ship.
+
+### Topology
+
+Three simulated agents run in parallel, each driven by a seeded RNG. Each
+ship is applied to two targets:
+
+1. **Per-agent schema** — one Postgres schema per agent (`rt_<seed>_agent_a`,
+   etc.), holding raw rows. The agent's patch is applied as-is.
+2. **Shared hub schema** — `rt_<seed>_hub`, with a composite primary key
+   `(host, id)`. The same patch is taken, `inject_field("host", agent_name,
+   "TEXT")` is called on it, and the resulting SQL is applied. leech2 rewrites
+   `INSERT` / `UPDATE` / `DELETE` / `TRUNCATE` to scope by `host`, so multiple
+   agents writing through the same target schema do not trample each other.
+
+After every ship both targets are queried and the row sets are compared to
+the agent's model. The hub query filters by `host`.
+
+### What it catches
+
+- Merge logic errors that produce a wrong final state regardless of which
+  rule misfires (caught by row mismatch).
+- Syntactically invalid SQL (caught by `psql` exit code, gated by
+  `--variable=ON_ERROR_STOP=1`).
+- Bugs in the layout-fallback path: each agent toggles its `email` column on
+  and off at two random rounds, so consolidations crossing those boundaries
+  exercise full-state replays.
+- Bugs in injected-field handling: the hub schema only verifies if `host`
+  scoping in `INSERT` columns and `WHERE` clauses is correct end-to-end.
+
+### Running it
+
+The test is `#[ignore]`d so `cargo test` skips it locally. CI runs it via the
+`Round-trip` workflow with a Postgres 16 service container. To run locally:
+
+```sh
+PGHOST=localhost PGUSER=leech2 PGPASSWORD=leech2 PGDATABASE=leech2 \
+  cargo test --release --test round_trip -- --include-ignored --nocapture
+```
+
+The seed defaults to a fixed constant. Override with `ROUND_TRIP_SEED=<u64>` to
+reproduce a specific failure; the workflow exposes the same input via
+`workflow_dispatch`.
+
 ## Source layout
 
 ```
@@ -255,7 +306,9 @@ proto/          Protobuf definitions (compiled at build time by prost-build)
 include/        C header (leech2.h)
 leech2.pc.in    pkg-config template (version and libdir filled in by build.rs)
 man/            Man page templates (*.in, version and date filled in by build.rs)
-tests/          Acceptance tests
+tests/          Acceptance tests (`accept_*.rs`), the round-trip
+                property test (`round_trip.rs`, gated on `PGHOST`),
+                and the C FFI test (`test_c_ffi.rs` + `test_c_ffi.c`)
 ```
 
 ## Work directory layout
