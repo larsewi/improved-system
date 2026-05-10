@@ -453,8 +453,6 @@ fn state_table_to_sql(
 ///
 /// Returns a SQL string wrapped in BEGIN/COMMIT.
 pub fn patch_to_sql(config: &Config, patch: &ProtoPatch) -> Result<Option<String>> {
-    log::info!("Converting patch to SQL: {}", patch);
-
     if patch.deltas.is_empty() && patch.states.is_empty() {
         log::info!("Patch has no payload, nothing to convert");
         return Ok(None);
@@ -476,6 +474,7 @@ pub fn patch_to_sql(config: &Config, patch: &ProtoPatch) -> Result<Option<String
     }
 
     sql.push_str("COMMIT;\n");
+    log::info!("Converted patch to SQL:\n{}", sql);
     Ok(Some(sql))
 }
 

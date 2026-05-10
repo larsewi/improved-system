@@ -63,7 +63,7 @@ impl ProtoState {
         };
 
         let proto_state = ProtoState::decode(data.as_slice())?;
-        log::info!(
+        log::debug!(
             "Loaded previous state with {} tables",
             proto_state.tables.len()
         );
@@ -89,7 +89,7 @@ impl State {
         }
 
         let state = State { tables };
-        log::info!("Computed current state from {} tables", state.tables.len());
+        log::debug!("Computed current state from {} tables", state.tables.len());
         log::trace!("{}", ProtoState::from(state.clone()));
         Ok(state)
     }
@@ -99,7 +99,7 @@ impl State {
         let mut buf = Vec::new();
         proto_state.encode(&mut buf)?;
         storage::store(work_dir, STATE_FILE, &buf)?;
-        log::info!(
+        log::debug!(
             "Updated previous state to current state with {} tables",
             self.tables.len()
         );
