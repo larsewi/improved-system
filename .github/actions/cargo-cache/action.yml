@@ -1,5 +1,10 @@
 name: Cargo cache
-description: Cache the cargo registry, git checkouts, and target/ directory across workflows. Uses the same key everywhere so all workflows share a single cache.
+description: Cache the cargo registry, git checkouts, and target/ directory. The registry/git portions are shared across runs naturally (cargo writes them to the same paths under any key); target/ is profile-scoped because debug and release artifacts differ and would otherwise clobber each other.
+
+inputs:
+  profile:
+    description: "Cargo profile this workflow builds (debug or release). Scopes the target/ cache so debug and release builds keep their own artifacts."
+    required: true
 
 runs:
   using: composite
@@ -11,6 +16,6 @@ runs:
           ~/.cargo/registry
           ~/.cargo/git
           target
-        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+        key: ${{ runner.os }}-cargo-${{ inputs.profile }}-${{ hashFiles('**/Cargo.lock') }}
         restore-keys: |
-          ${{ runner.os }}-cargo-
+          ${{ runner.os }}-cargo-${{ inputs.profile }}-
