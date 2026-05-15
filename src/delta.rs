@@ -5,9 +5,9 @@ use anyhow::{Context, Result, bail};
 
 use crate::cell::Cell;
 use crate::cell::display_proto_cells;
-use crate::entry::RecordMap;
-use crate::entry::decode_proto_records;
 use crate::proto::delta::Delta as ProtoDelta;
+use crate::record::RecordMap;
+use crate::record::decode_proto_records;
 use crate::state::State;
 use crate::table::Table;
 use crate::update::UpdateMap;
@@ -62,14 +62,14 @@ impl ProtoDelta {
     ///
     /// The proto format stores keys and values separately, but `fields`
     /// lists all columns together (PK first, then subsidiary). This method
-    /// determines the PK count from the first available entry's key length
+    /// determines the PK count from the first available record's key length
     /// (trying inserts, then deletes, then updates; defaulting to 0 if the
     /// delta is empty) and subtracts it from the total column count.
     fn num_subsidiary(&self) -> Result<usize> {
-        let num_primary_keys = if let Some(entry) = self.inserts.first() {
-            entry.key.len()
-        } else if let Some(entry) = self.deletes.first() {
-            entry.key.len()
+        let num_primary_keys = if let Some(record) = self.inserts.first() {
+            record.key.len()
+        } else if let Some(record) = self.deletes.first() {
+            record.key.len()
         } else if let Some(update) = self.updates.first() {
             update.key.len()
         } else {
@@ -91,12 +91,12 @@ impl ProtoDelta {
         }
 
         write!(f, "\n  Inserts ({}):", self.inserts.len())?;
-        for entry in &self.inserts {
+        for record in &self.inserts {
             write!(
                 f,
                 "\n    ({}) {}",
-                display_proto_cells(&entry.key),
-                display_proto_cells(&entry.value)
+                display_proto_cells(&record.key),
+                display_proto_cells(&record.value)
             )?;
         }
         Ok(())
@@ -108,18 +108,18 @@ impl ProtoDelta {
         }
 
         write!(f, "\n  Deletes ({}):", self.deletes.len())?;
-        for entry in &self.deletes {
-            let values = if entry.value.is_empty() {
+        for record in &self.deletes {
+            let values = if record.value.is_empty() {
                 vec!["_"; num_subsidiary].join(", ")
             } else {
-                display_proto_cells(&entry.value)
+                display_proto_cells(&record.value)
             };
-            write!(f, "\n    ({}) {}", display_proto_cells(&entry.key), values)?;
+            write!(f, "\n    ({}) {}", display_proto_cells(&record.key), values)?;
         }
         Ok(())
     }
 
-    /// Format update entries. Updates come in two wire formats:
+    /// Format updates. Updates come in two wire formats:
     /// - **Full** (blocks): `changed_indices` is empty and all `num_subsidiary`
     ///   columns are present in `new_value`/`old_value` positionally.
     /// - **Sparse** (patches): only the columns listed in `changed_indices`

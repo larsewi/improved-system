@@ -282,7 +282,7 @@ src/
   table.rs      CSV loading, in-memory table (HashMap<Vec<Cell>, Vec<Cell>>)
   state.rs      Snapshot of all tables, protobuf persistence
   cell.rs       Domain Cell type + conversions to/from proto::cell::Cell
-  entry.rs      Entry type (Vec<Cell> key + value)
+  record.rs     Record type (Vec<Cell> key + value)
   update.rs     Update type (key, changed indices, old/new values)
   delta.rs      Diff computation + merge logic (see DELTA_MERGING_RULES.md)
   block.rs      Content-addressable block creation and loading

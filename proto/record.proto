@@ -1,11 +1,11 @@
 syntax = "proto3";
 
-package entry;
+package record;
 
 import "cell.proto";
 
-// Entry represents a row in a table, split into key and value components.
-message Entry {
+// Record represents one row of a table, split into key and value halves.
+message Record {
   // The cells that make up the composite primary key.
   repeated cell.Cell key = 1;
   // The subsidiary (non-key) cells.

@@ -6,9 +6,9 @@ use crate::cell::{Cell, ValueKind};
 use crate::config::{Config, FieldConfig};
 use crate::proto::cell::Cell as ProtoCell;
 use crate::proto::delta::Delta as ProtoDelta;
-use crate::proto::entry::Entry as ProtoEntry;
 use crate::proto::injected::Field as ProtoInjectedField;
 use crate::proto::patch::Patch as ProtoPatch;
+use crate::proto::record::Record as ProtoRecord;
 use crate::proto::table::Table as ProtoTable;
 use crate::proto::update::Update as ProtoUpdate;
 
@@ -238,17 +238,17 @@ fn format_row(key: &[ProtoCell], value: &[ProtoCell], schema: &TableSchema) -> R
     Ok(literals)
 }
 
-/// Generate DELETE statements for a list of entries.
+/// Generate DELETE statements for a list of records.
 fn emit_deletes(
-    entries: &[ProtoEntry],
+    records: &[ProtoRecord],
     schema: &TableSchema,
     injected_fields: &[InjectedField],
     quoted_table: &str,
     out: &mut String,
 ) -> Result<()> {
-    for entry in entries {
-        let where_clause = primary_key_where_clause(&entry.key, schema, injected_fields)
-            .with_context(|| format!("key {:?}", entry.key))?;
+    for record in records {
+        let where_clause = primary_key_where_clause(&record.key, schema, injected_fields)
+            .with_context(|| format!("key {:?}", record.key))?;
         out.push_str(&format!(
             "DELETE FROM {} WHERE {};\n",
             quoted_table, where_clause
@@ -257,15 +257,15 @@ fn emit_deletes(
     Ok(())
 }
 
-/// Generate INSERT statements for a list of entries.
+/// Generate INSERT statements for a list of records.
 fn emit_inserts(
-    entries: &[ProtoEntry],
+    records: &[ProtoRecord],
     schema: &TableSchema,
     injected_fields: &[InjectedField],
     quoted_table: &str,
     out: &mut String,
 ) -> Result<()> {
-    if entries.is_empty() {
+    if records.is_empty() {
         return Ok(());
     }
 
@@ -282,9 +282,9 @@ fn emit_inserts(
     // Injected values are static across the entire patch, so compute once.
     let injected_values: Vec<String> = injected_fields.iter().map(|f| f.quoted_value()).collect();
 
-    for entry in entries {
-        let mut literals = format_row(&entry.key, &entry.value, schema)
-            .with_context(|| format!("key {:?}", entry.key))?;
+    for record in records {
+        let mut literals = format_row(&record.key, &record.value, schema)
+            .with_context(|| format!("key {:?}", record.key))?;
         literals.splice(..0, injected_values.iter().cloned());
         out.push_str(&format!(
             "INSERT INTO {} ({}) VALUES ({});\n",
@@ -439,7 +439,7 @@ fn state_table_to_sql(
         ));
     }
 
-    emit_inserts(&table.entries, &schema, injected_fields, &quoted_table, out)
+    emit_inserts(&table.records, &schema, injected_fields, &quoted_table, out)
         .with_context(|| format!("table '{table_name}'"))?;
 
     Ok(())
@@ -577,7 +577,7 @@ mod tests {
         let config = dummy_config(HashMap::from([("test_table".to_string(), table_config)]));
 
         let mut delta = dummy_delta(&["id"]);
-        delta.inserts.push(ProtoEntry {
+        delta.inserts.push(ProtoRecord {
             key: text_proto_cells(&["1"]),
             value: vec![],
         });
@@ -643,7 +643,7 @@ mod tests {
         // Wire entry as the agent would have serialized it: subsidiary values
         // laid out in the agent's declaration order, i.e. [name, email].
         let mut delta = dummy_delta(&["id", "name", "email"]);
-        delta.inserts.push(ProtoEntry {
+        delta.inserts.push(ProtoRecord {
             key: text_proto_cells(&["1"]),
             value: text_proto_cells(&["Alice", "alice@example.com"]),
         });
@@ -750,7 +750,7 @@ mod tests {
         let config = dummy_config(HashMap::from([("t".to_string(), table)]));
 
         let mut delta = dummy_delta(&["id", "score"]);
-        delta.inserts.push(ProtoEntry {
+        delta.inserts.push(ProtoRecord {
             key: text_proto_cells(&["1"]),
             value: text_proto_cells(&["not-a-number"]),
         });

@@ -10,7 +10,7 @@ use crate::cell::{
     parse_boolean, parse_typed_cell,
 };
 use crate::config::{FieldConfig, FilterConfig, TableConfig};
-use crate::entry::decode_proto_records;
+use crate::record::decode_proto_records;
 
 type ProtoTable = crate::proto::table::Table;
 
@@ -34,7 +34,7 @@ impl TryFrom<ProtoTable> for Table {
     type Error = anyhow::Error;
 
     fn try_from(proto: ProtoTable) -> Result<Self> {
-        let records = decode_proto_records(proto.entries)?;
+        let records = decode_proto_records(proto.records)?;
         Ok(Table {
             fields: proto.fields,
             records,
@@ -44,10 +44,10 @@ impl TryFrom<ProtoTable> for Table {
 
 impl From<Table> for ProtoTable {
     fn from(table: Table) -> Self {
-        let entries = table.records.into_iter().map(Into::into).collect();
+        let records = table.records.into_iter().map(Into::into).collect();
         ProtoTable {
             fields: table.fields,
-            entries,
+            records,
         }
     }
 }
@@ -55,12 +55,12 @@ impl From<Table> for ProtoTable {
 impl fmt::Display for ProtoTable {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "[{}]", self.fields.join(", "))?;
-        for entry in &self.entries {
+        for record in &self.records {
             write!(
                 f,
                 "\n  ({}) {}",
-                display_proto_cells(&entry.key),
-                display_proto_cells(&entry.value)
+                display_proto_cells(&record.key),
+                display_proto_cells(&record.value)
             )?;
         }
         Ok(())
