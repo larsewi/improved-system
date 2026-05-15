@@ -136,5 +136,4 @@ An application that acts as both an agent and a hub.
 | Concept                  | Should be        | Currently     |
 | ------------------------ | ---------------- | ------------- |
 | Non-key half of a record | `value` (field)  | `value` field |
-| Type tag                 | `Kind`           | `ValueKind`   |
 | Field schema             | `Field` (config) | `FieldConfig` |

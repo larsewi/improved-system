@@ -6,8 +6,8 @@ use std::path::Path;
 use anyhow::{Context, Result};
 
 use crate::cell::{
-    Cell, DEFAULT_FALSE_SENTINEL, DEFAULT_TRUE_SENTINEL, ValueKind, display_proto_cells,
-    parse_boolean, parse_typed_cell,
+    Cell, DEFAULT_FALSE_SENTINEL, DEFAULT_TRUE_SENTINEL, Kind, display_proto_cells, parse_boolean,
+    parse_typed_cell,
 };
 use crate::config::{FieldConfig, FilterConfig, TableConfig};
 use crate::record::decode_proto_records;
@@ -241,7 +241,7 @@ fn parse_field_value(value: &str, field: &FieldConfig) -> Result<Cell> {
     {
         return Ok(Cell::Null);
     }
-    if let ValueKind::Boolean = field.value_kind {
+    if let Kind::Boolean = field.kind {
         let true_sentinel = field
             .true_sentinel
             .as_deref()
@@ -254,7 +254,7 @@ fn parse_field_value(value: &str, field: &FieldConfig) -> Result<Cell> {
             .map(Cell::Boolean)
             .with_context(|| format!("field '{}'", field.name));
     }
-    parse_typed_cell(value, field.value_kind).with_context(|| format!("field '{}'", field.name))
+    parse_typed_cell(value, field.kind).with_context(|| format!("field '{}'", field.name))
 }
 
 #[cfg(test)]
@@ -484,13 +484,13 @@ mod tests {
 
     fn make_typed_field(
         name: &str,
-        value_kind: ValueKind,
+        kind: Kind,
         primary_key: bool,
         null_sentinel: Option<&str>,
     ) -> FieldConfig {
         FieldConfig {
             name: name.to_string(),
-            value_kind,
+            kind,
             primary_key,
             null_sentinel: null_sentinel.map(str::to_string),
             ..Default::default()
@@ -501,9 +501,9 @@ mod tests {
     fn test_parse_csv_parses_numbers() {
         let config = make_config(
             vec![
-                make_typed_field("id", ValueKind::Number, true, None),
-                make_typed_field("count", ValueKind::Number, false, None),
-                make_typed_field("name", ValueKind::Text, false, None),
+                make_typed_field("id", Kind::Number, true, None),
+                make_typed_field("count", Kind::Number, false, None),
+                make_typed_field("name", Kind::Text, false, None),
             ],
             true,
         );
@@ -526,8 +526,8 @@ mod tests {
     fn test_parse_csv_respects_null_sentinel_on_number() {
         let config = make_config(
             vec![
-                make_typed_field("id", ValueKind::Number, true, None),
-                make_typed_field("count", ValueKind::Number, false, Some("N/A")),
+                make_typed_field("id", Kind::Number, true, None),
+                make_typed_field("count", Kind::Number, false, Some("N/A")),
             ],
             true,
         );
@@ -550,8 +550,8 @@ mod tests {
     fn test_parse_csv_parses_booleans_with_default_sentinels() {
         let config = make_config(
             vec![
-                make_typed_field("id", ValueKind::Number, true, None),
-                make_typed_field("active", ValueKind::Boolean, false, None),
+                make_typed_field("id", Kind::Number, true, None),
+                make_typed_field("active", Kind::Boolean, false, None),
             ],
             true,
         );
@@ -572,8 +572,8 @@ mod tests {
     fn test_parse_csv_default_boolean_sentinels_are_strict() {
         let config = make_config(
             vec![
-                make_typed_field("id", ValueKind::Number, true, None),
-                make_typed_field("active", ValueKind::Boolean, false, None),
+                make_typed_field("id", Kind::Number, true, None),
+                make_typed_field("active", Kind::Boolean, false, None),
             ],
             true,
         );
@@ -585,11 +585,11 @@ mod tests {
 
     #[test]
     fn test_parse_csv_respects_custom_boolean_sentinels() {
-        let mut field = make_typed_field("active", ValueKind::Boolean, false, None);
+        let mut field = make_typed_field("active", Kind::Boolean, false, None);
         field.true_sentinel = Some("Y".to_string());
         field.false_sentinel = Some("N".to_string());
         let config = make_config(
-            vec![make_typed_field("id", ValueKind::Number, true, None), field],
+            vec![make_typed_field("id", Kind::Number, true, None), field],
             true,
         );
         let reader = Table::test_reader("id,active\n1,Y\n2,N\n", true);
@@ -609,11 +609,11 @@ mod tests {
     fn test_parse_csv_custom_boolean_sentinels_reject_defaults() {
         // When per-field sentinels are configured, the strict defaults are no
         // longer accepted — only the configured strings.
-        let mut field = make_typed_field("active", ValueKind::Boolean, false, None);
+        let mut field = make_typed_field("active", Kind::Boolean, false, None);
         field.true_sentinel = Some("Y".to_string());
         field.false_sentinel = Some("N".to_string());
         let config = make_config(
-            vec![make_typed_field("id", ValueKind::Number, true, None), field],
+            vec![make_typed_field("id", Kind::Number, true, None), field],
             true,
         );
         let reader = Table::test_reader("id,active\n1,true\n", true);
@@ -626,8 +626,8 @@ mod tests {
     fn test_parse_csv_rejects_invalid_number() {
         let config = make_config(
             vec![
-                make_typed_field("id", ValueKind::Number, true, None),
-                make_typed_field("count", ValueKind::Number, false, None),
+                make_typed_field("id", Kind::Number, true, None),
+                make_typed_field("count", Kind::Number, false, None),
             ],
             true,
         );

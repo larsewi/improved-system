@@ -4,7 +4,7 @@ use std::hash::{Hash, Hasher};
 use anyhow::{Context, Result, bail};
 
 use crate::proto::cell::Cell as ProtoCell;
-use crate::proto::cell::cell::Kind;
+use crate::proto::cell::cell::Kind as ProtoKind;
 
 /// A single typed value at one (row, column) in a table.
 ///
@@ -35,12 +35,12 @@ impl Cell {
         Ok(Cell::Number(normalized))
     }
 
-    pub fn kind(&self) -> ValueKind {
+    pub fn kind(&self) -> Kind {
         match self {
-            Cell::Null => ValueKind::Null,
-            Cell::Text(_) => ValueKind::Text,
-            Cell::Boolean(_) => ValueKind::Boolean,
-            Cell::Number(_) => ValueKind::Number,
+            Cell::Null => Kind::Null,
+            Cell::Text(_) => Kind::Text,
+            Cell::Boolean(_) => Kind::Boolean,
+            Cell::Number(_) => Kind::Number,
         }
     }
 }
@@ -49,7 +49,7 @@ impl Cell {
 /// field's expected type in config and to validate that a wire cell's
 /// variant matches that declaration.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ValueKind {
+pub enum Kind {
     Null,
     Text,
     Number,
@@ -129,10 +129,10 @@ impl TryFrom<ProtoCell> for Cell {
 
     fn try_from(proto: ProtoCell) -> Result<Self> {
         match proto.kind {
-            Some(Kind::Null(())) => Ok(Cell::Null),
-            Some(Kind::Text(s)) => Ok(Cell::Text(s)),
-            Some(Kind::Boolean(b)) => Ok(Cell::Boolean(b)),
-            Some(Kind::Number(n)) => Cell::number(n),
+            Some(ProtoKind::Null(())) => Ok(Cell::Null),
+            Some(ProtoKind::Text(s)) => Ok(Cell::Text(s)),
+            Some(ProtoKind::Boolean(b)) => Ok(Cell::Boolean(b)),
+            Some(ProtoKind::Number(n)) => Cell::number(n),
             None => bail!("Cell message has no kind set"),
         }
     }
@@ -143,10 +143,10 @@ impl TryFrom<&ProtoCell> for Cell {
 
     fn try_from(proto: &ProtoCell) -> Result<Self> {
         match &proto.kind {
-            Some(Kind::Null(())) => Ok(Cell::Null),
-            Some(Kind::Text(s)) => Ok(Cell::Text(s.clone())),
-            Some(Kind::Boolean(b)) => Ok(Cell::Boolean(*b)),
-            Some(Kind::Number(n)) => Cell::number(*n),
+            Some(ProtoKind::Null(())) => Ok(Cell::Null),
+            Some(ProtoKind::Text(s)) => Ok(Cell::Text(s.clone())),
+            Some(ProtoKind::Boolean(b)) => Ok(Cell::Boolean(*b)),
+            Some(ProtoKind::Number(n)) => Cell::number(*n),
             None => bail!("Cell message has no kind set"),
         }
     }
@@ -201,25 +201,25 @@ pub fn display_proto_cells(cells: &[ProtoCell]) -> String {
 impl From<Cell> for ProtoCell {
     fn from(cell: Cell) -> Self {
         let kind = match cell {
-            Cell::Null => Kind::Null(()),
-            Cell::Text(s) => Kind::Text(s),
-            Cell::Boolean(b) => Kind::Boolean(b),
-            Cell::Number(n) => Kind::Number(n),
+            Cell::Null => ProtoKind::Null(()),
+            Cell::Text(s) => ProtoKind::Text(s),
+            Cell::Boolean(b) => ProtoKind::Boolean(b),
+            Cell::Number(n) => ProtoKind::Number(n),
         };
         ProtoCell { kind: Some(kind) }
     }
 }
 
-impl ValueKind {
+impl Kind {
     /// Parse a config field's `type` string (`"TEXT"` / `"NUMBER"` /
-    /// `"BOOLEAN"`, case-insensitive) into a [`ValueKind`]. Config never
-    /// declares NULL as a type, so [`ValueKind::Null`] is not produced
+    /// `"BOOLEAN"`, case-insensitive) into a [`Kind`]. Config never
+    /// declares NULL as a type, so [`Kind::Null`] is not produced
     /// here.
     pub fn from_config(type_str: &str) -> Result<Self> {
         match type_str.to_uppercase().as_str() {
-            "TEXT" => Ok(ValueKind::Text),
-            "NUMBER" => Ok(ValueKind::Number),
-            "BOOLEAN" => Ok(ValueKind::Boolean),
+            "TEXT" => Ok(Kind::Text),
+            "NUMBER" => Ok(Kind::Number),
+            "BOOLEAN" => Ok(Kind::Boolean),
             other => bail!(
                 "unknown field type '{}'; valid types are: TEXT, NUMBER, BOOLEAN",
                 other
@@ -254,19 +254,19 @@ pub fn parse_boolean(value: &str, true_sentinel: &str, false_sentinel: &str) -> 
 /// Parse a string into a typed `Cell` according to the kind tag. Boolean
 /// parsing uses the default sentinels; CSV-parsing callers that honor
 /// per-field overrides should call [`parse_boolean`] directly. Passing
-/// [`ValueKind::Null`] is rejected — Null is set via the field's
+/// [`Kind::Null`] is rejected — Null is set via the field's
 /// null-sentinel mechanism, not by parsing.
-pub fn parse_typed_cell(value: &str, kind: ValueKind) -> Result<Cell> {
+pub fn parse_typed_cell(value: &str, kind: Kind) -> Result<Cell> {
     match kind {
-        ValueKind::Null => bail!("cannot parse value as NULL"),
-        ValueKind::Text => Ok(Cell::Text(value.to_string())),
-        ValueKind::Number => {
+        Kind::Null => bail!("cannot parse value as NULL"),
+        Kind::Text => Ok(Cell::Text(value.to_string())),
+        Kind::Number => {
             let parsed: f64 = value
                 .parse()
                 .with_context(|| format!("invalid number: '{}'", value))?;
             Cell::number(parsed)
         }
-        ValueKind::Boolean => Ok(Cell::Boolean(parse_boolean(
+        Kind::Boolean => Ok(Cell::Boolean(parse_boolean(
             value,
             DEFAULT_TRUE_SENTINEL,
             DEFAULT_FALSE_SENTINEL,
@@ -392,43 +392,37 @@ mod tests {
     #[test]
     fn try_from_proto_rejects_nan_number() {
         let proto = ProtoCell {
-            kind: Some(Kind::Number(f64::NAN)),
+            kind: Some(ProtoKind::Number(f64::NAN)),
         };
         assert!(Cell::try_from(proto).is_err());
     }
 
     #[test]
-    fn test_value_kind_from_config() {
-        assert_eq!(ValueKind::from_config("TEXT").unwrap(), ValueKind::Text);
-        assert_eq!(ValueKind::from_config("NUMBER").unwrap(), ValueKind::Number);
-        assert_eq!(
-            ValueKind::from_config("BOOLEAN").unwrap(),
-            ValueKind::Boolean
-        );
+    fn test_kind_from_config() {
+        assert_eq!(Kind::from_config("TEXT").unwrap(), Kind::Text);
+        assert_eq!(Kind::from_config("NUMBER").unwrap(), Kind::Number);
+        assert_eq!(Kind::from_config("BOOLEAN").unwrap(), Kind::Boolean);
         // Case insensitive
-        assert_eq!(ValueKind::from_config("text").unwrap(), ValueKind::Text);
-        assert_eq!(ValueKind::from_config("number").unwrap(), ValueKind::Number);
-        assert_eq!(
-            ValueKind::from_config("Boolean").unwrap(),
-            ValueKind::Boolean
-        );
+        assert_eq!(Kind::from_config("text").unwrap(), Kind::Text);
+        assert_eq!(Kind::from_config("number").unwrap(), Kind::Number);
+        assert_eq!(Kind::from_config("Boolean").unwrap(), Kind::Boolean);
         // Unknown types are rejected
-        assert!(ValueKind::from_config("unknown").is_err());
+        assert!(Kind::from_config("unknown").is_err());
         // NULL is not a valid declared type
-        assert!(ValueKind::from_config("NULL").is_err());
+        assert!(Kind::from_config("NULL").is_err());
     }
 
     #[test]
-    fn test_value_kind_matches_cell() {
-        assert_eq!(Cell::Null.kind(), ValueKind::Null);
-        assert_eq!(Cell::Text("x".into()).kind(), ValueKind::Text);
-        assert_eq!(Cell::Number(1.0).kind(), ValueKind::Number);
-        assert_eq!(Cell::Boolean(true).kind(), ValueKind::Boolean);
+    fn test_kind_matches_cell() {
+        assert_eq!(Cell::Null.kind(), Kind::Null);
+        assert_eq!(Cell::Text("x".into()).kind(), Kind::Text);
+        assert_eq!(Cell::Number(1.0).kind(), Kind::Number);
+        assert_eq!(Cell::Boolean(true).kind(), Kind::Boolean);
     }
 
     #[test]
     fn test_parse_typed_cell_rejects_null_kind() {
-        assert!(parse_typed_cell("anything", ValueKind::Null).is_err());
+        assert!(parse_typed_cell("anything", Kind::Null).is_err());
     }
 
     #[test]

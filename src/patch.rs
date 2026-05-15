@@ -9,7 +9,7 @@ use prost::Message;
 use prost_types::Timestamp;
 
 use crate::block::Block;
-use crate::cell::{ValueKind, parse_typed_cell};
+use crate::cell::{Kind, parse_typed_cell};
 use crate::config::{Config, InjectedFieldConfig};
 use crate::delta::Delta;
 use crate::head;
@@ -24,7 +24,7 @@ impl TryFrom<&InjectedFieldConfig> for Field {
     type Error = anyhow::Error;
 
     fn try_from(config: &InjectedFieldConfig) -> Result<Self> {
-        let value = parse_typed_cell(&config.value, config.value_kind)
+        let value = parse_typed_cell(&config.value, config.kind)
             .with_context(|| format!("injected field '{}'", config.name))?;
         Ok(Field {
             name: config.name.clone(),
@@ -377,7 +377,7 @@ impl Patch {
             bail!("inject_field: name must not be empty");
         }
 
-        let kind = ValueKind::from_config(sql_type).context("inject_field: invalid sql_type")?;
+        let kind = Kind::from_config(sql_type).context("inject_field: invalid sql_type")?;
         let parsed = parse_typed_cell(value, kind).context("inject_field: invalid value")?;
         let new_value: crate::proto::cell::Cell = parsed.into();
 

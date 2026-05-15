@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use anyhow::{Context, Result, anyhow, bail};
 
-use crate::cell::{Cell, ValueKind};
+use crate::cell::{Cell, Kind};
 use crate::config::{Config, FieldConfig};
 use crate::proto::cell::Cell as ProtoCell;
 use crate::proto::delta::Delta as ProtoDelta;
@@ -126,7 +126,7 @@ impl<'a> TableSchema<'a> {
 /// Validate that a wire cell's variant agrees with the field's declared
 /// type, and that `Null` only appears in nullable fields.
 fn check_value_matches_field(value: &Cell, field: &FieldConfig) -> Result<()> {
-    if value.kind() == ValueKind::Null {
+    if value.kind() == Kind::Null {
         if field.null_sentinel.is_none() {
             bail!(
                 "field '{}' is not nullable but wire value is NULL",
@@ -136,12 +136,12 @@ fn check_value_matches_field(value: &Cell, field: &FieldConfig) -> Result<()> {
         return Ok(());
     }
 
-    if value.kind() != field.value_kind {
+    if value.kind() != field.kind {
         bail!(
             "field '{}': wire value {} does not match declared type {:?}",
             field.name,
             value,
-            field.value_kind
+            field.kind
         );
     }
     Ok(())
@@ -687,10 +687,10 @@ mod tests {
         assert!(msg.contains("primary-key prefix"), "got: {msg}");
     }
 
-    fn make_field(name: &str, value_kind: ValueKind, nullable: bool) -> FieldConfig {
+    fn make_field(name: &str, kind: Kind, nullable: bool) -> FieldConfig {
         FieldConfig {
             name: name.to_string(),
-            value_kind,
+            kind,
             null_sentinel: if nullable { Some("".to_string()) } else { None },
             ..Default::default()
         }
@@ -700,17 +700,17 @@ mod tests {
     fn test_check_value_matches_field_accepts_correct_types() {
         check_value_matches_field(
             &Cell::Text("hello".into()),
-            &make_field("name", ValueKind::Text, false),
+            &make_field("name", Kind::Text, false),
         )
         .unwrap();
         check_value_matches_field(
             &Cell::Number(2.5),
-            &make_field("price", ValueKind::Number, false),
+            &make_field("price", Kind::Number, false),
         )
         .unwrap();
         check_value_matches_field(
             &Cell::Boolean(true),
-            &make_field("flag", ValueKind::Boolean, false),
+            &make_field("flag", Kind::Boolean, false),
         )
         .unwrap();
     }
@@ -718,27 +718,24 @@ mod tests {
     #[test]
     fn test_check_value_matches_field_rejects_type_drift() {
         // Wire sends a Number into a column the hub config declared TEXT.
-        let err = check_value_matches_field(
-            &Cell::Number(42.0),
-            &make_field("note", ValueKind::Text, false),
-        )
-        .unwrap_err();
+        let err =
+            check_value_matches_field(&Cell::Number(42.0), &make_field("note", Kind::Text, false))
+                .unwrap_err();
         let msg = format!("{:#}", err);
         assert!(msg.contains("does not match declared type"), "got: {msg}");
     }
 
     #[test]
     fn test_check_value_matches_field_rejects_null_in_non_nullable() {
-        let err =
-            check_value_matches_field(&Cell::Null, &make_field("name", ValueKind::Text, false))
-                .unwrap_err();
+        let err = check_value_matches_field(&Cell::Null, &make_field("name", Kind::Text, false))
+            .unwrap_err();
         let msg = format!("{:#}", err);
         assert!(msg.contains("not nullable"), "got: {msg}");
     }
 
     #[test]
     fn test_check_value_matches_field_accepts_null_in_nullable() {
-        check_value_matches_field(&Cell::Null, &make_field("name", ValueKind::Text, true)).unwrap();
+        check_value_matches_field(&Cell::Null, &make_field("name", Kind::Text, true)).unwrap();
     }
 
     #[test]
@@ -746,7 +743,7 @@ mod tests {
         // Hub declares the subsidiary column as NUMBER. The wire passes the
         // resolve checks, but the inserted value is a Text.
         let mut table = dummy_table(&[("id", true), ("score", false)]);
-        table.fields[1].value_kind = ValueKind::Number;
+        table.fields[1].kind = Kind::Number;
         let config = dummy_config(HashMap::from([("t".to_string(), table)]));
 
         let mut delta = dummy_delta(&["id", "score"]);
