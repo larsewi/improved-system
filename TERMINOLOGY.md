@@ -130,10 +130,3 @@ database.
 ### Feeder
 
 An application that acts as both an agent and a hub.
-
-## Mapping to current code
-
-| Concept                  | Should be        | Currently     |
-| ------------------------ | ---------------- | ------------- |
-| Non-key half of a record | `value` (field)  | `value` field |
-| Field schema             | `Field` (config) | `FieldConfig` |
