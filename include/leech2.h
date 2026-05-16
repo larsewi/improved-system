@@ -55,6 +55,18 @@ typedef struct {
 } lch_cell_t;
 
 /**
+ * Owned byte buffer returned by the library.
+ *
+ * Functions that allocate a buffer fill in @p data and @p len. The buffer must
+ * eventually be released with the matching free routine (see each function's
+ * documentation). On failure, the fields are left untouched.
+ */
+typedef struct {
+  uint8_t *data;
+  size_t len;
+} lch_buffer_t;
+
+/**
  * Callback type for receiving log messages.
  *
  * @param level     Severity level of the message.
@@ -135,8 +147,7 @@ extern int lch_block_create(const lch_config_t *cfg);
  * Create a patch from HEAD back to a known hash.
  *
  * Walks the block chain from HEAD to @p hash, merging deltas along the way.
- * The resulting patch is encoded into a caller-owned buffer written to
- * @p buf and @p len.
+ * On success, @p out receives the encoded patch buffer.
  *
  * If @p hash is NULL the REPORTED hash is used as the starting point; if
  * REPORTED does not exist, genesis (the very beginning of the chain) is used.
@@ -145,22 +156,21 @@ extern int lch_block_create(const lch_config_t *cfg);
  * mechanism (lch_patch_applied / lch_patch_failed) and implement their own
  * system for tracking which blocks have been reported.
  *
- * The buffer written to @p buf must eventually be freed with lch_patch_free().
+ * The buffer written to @p out must eventually be freed with lch_patch_free().
  *
  * @param cfg       Valid config handle (must not be NULL).
  * @param hash      Last-known block hash (null-terminated string), or NULL.
- * @param[out] buf  Receives a pointer to the encoded patch buffer.
- * @param[out] len  Receives the length of the patch buffer in bytes.
+ * @param[out] out  Receives the encoded patch buffer (must not be NULL).
  * @return LCH_SUCCESS on success, LCH_FAILURE on error.
  */
 extern int lch_patch_create(const lch_config_t *cfg, const char *hash,
-                            uint8_t **buf, size_t *len);
+                            lch_buffer_t *out);
 
 /**
  * Convert an encoded patch to SQL statements.
  *
- * Decodes the patch in @p buf and produces SQL that, when executed, applies the
- * patch to a downstream database:
+ * Decodes the patch in @p patch and produces SQL that, when executed, applies
+ * the patch to a downstream database:
  * - Delta payloads generate DELETE, INSERT, and UPDATE statements.
  * - State payloads generate TRUNCATE followed by INSERT statements.
  * - All statements are wrapped in BEGIN / COMMIT.
@@ -169,22 +179,21 @@ extern int lch_patch_create(const lch_config_t *cfg, const char *hash,
  * function returns LCH_SUCCESS.
  *
  * @param cfg       Valid config handle (must not be NULL).
- * @param buf       Pointer to the encoded patch (must not be NULL).
- * @param len       Length of @p buf in bytes.
+ * @param patch     Encoded patch buffer (must not be NULL).
  * @param[out] sql  Receives a pointer to the SQL string, or NULL if the patch
  *                  is empty. Free with lch_sql_free().
  * @return LCH_SUCCESS on success, LCH_FAILURE on error.
  */
-extern int lch_patch_to_sql(const lch_config_t *cfg, const uint8_t *buf,
-                            size_t len, char **sql);
+extern int lch_patch_to_sql(const lch_config_t *cfg, const lch_buffer_t *patch,
+                            char **sql);
 
 /**
  * Inject a field into an encoded patch.
  *
- * Decodes the patch in @p in_buf, adds or overwrites an injected field with
- * the given @p name and @p cell, and encodes the result into a new
- * caller-owned buffer written to @p out_buf and @p out_len. The input buffer
- * is not modified; the caller manages its lifetime independently.
+ * Decodes the patch in @p in, adds or overwrites an injected field with the
+ * given @p name and @p cell, and encodes the result into a new caller-owned
+ * buffer written to @p out. The input buffer is not modified; the caller
+ * manages its lifetime independently.
  *
  * The kind tag on @p cell determines how the value is formatted as a SQL
  * literal (TEXT becomes single-quoted, NUMBER is emitted as a numeric
@@ -195,22 +204,18 @@ extern int lch_patch_to_sql(const lch_config_t *cfg, const uint8_t *buf,
  * from static configuration or a prior injection -- both its value and kind
  * are replaced.
  *
- * The buffer written to @p out_buf must eventually be freed with
- * lch_patch_free().
+ * The buffer written to @p out must eventually be freed with lch_patch_free().
  *
- * @param cfg           Valid config handle (must not be NULL).
- * @param in_buf        Pointer to the encoded input patch (must not be NULL).
- * @param in_len        Length of @p in_buf in bytes.
- * @param name          Column name (non-empty, null-terminated).
- * @param cell          Typed value to inject (must not be NULL).
- * @param[out] out_buf  Receives a pointer to the encoded output patch.
- * @param[out] out_len  Receives the length of @p out_buf in bytes.
+ * @param cfg       Valid config handle (must not be NULL).
+ * @param in        Encoded input patch (must not be NULL).
+ * @param name      Column name (non-empty, null-terminated).
+ * @param cell      Typed value to inject (must not be NULL).
+ * @param[out] out  Receives the encoded output patch (must not be NULL).
  * @return LCH_SUCCESS on success, LCH_FAILURE on error.
  */
-extern int lch_patch_inject(const lch_config_t *cfg, const uint8_t *in_buf,
-                            size_t in_len, const char *name,
-                            const lch_cell_t *cell, uint8_t **out_buf,
-                            size_t *out_len);
+extern int lch_patch_inject(const lch_config_t *cfg, const lch_buffer_t *in,
+                            const char *name, const lch_cell_t *cell,
+                            lch_buffer_t *out);
 
 /**
  * Mark a patch as applied.
@@ -218,13 +223,12 @@ extern int lch_patch_inject(const lch_config_t *cfg, const uint8_t *in_buf,
  * Updates the REPORTED file with the patch's head hash so that future
  * truncation knows which blocks are safe to remove.
  *
- * @param cfg  Valid config handle (must not be NULL).
- * @param buf  Pointer to the encoded patch (must not be NULL).
- * @param len  Length of @p buf in bytes.
+ * @param cfg    Valid config handle (must not be NULL).
+ * @param patch  Encoded patch buffer (must not be NULL).
  * @return LCH_SUCCESS on success, LCH_FAILURE on error.
  */
-extern int lch_patch_applied(const lch_config_t *cfg, const uint8_t *buf,
-                             size_t len);
+extern int lch_patch_applied(const lch_config_t *cfg,
+                             const lch_buffer_t *patch);
 
 /**
  * Mark a patch as failed.
@@ -241,13 +245,14 @@ extern int lch_patch_failed(const lch_config_t *cfg);
 /**
  * Free a patch buffer without marking it as applied.
  *
- * Passing NULL is a safe no-op. After this call, @p buf is invalid and must
- * not be used.
+ * Passing NULL is a safe no-op, as is passing a buffer with @c data set to
+ * NULL. After this call, the buffer's @c data pointer is invalid and must not
+ * be used; the caller may reset the struct or let it go out of scope.
  *
- * @param buf  Patch buffer previously returned by lch_patch_create(), or NULL.
- * @param len  Length of @p buf in bytes.
+ * @param buf  Patch buffer previously filled in by lch_patch_create() or
+ *             lch_patch_inject(), or NULL.
  */
-extern void lch_patch_free(uint8_t *buf, size_t len);
+extern void lch_patch_free(lch_buffer_t *buf);
 
 /**
  * Free an SQL string returned by lch_patch_to_sql().

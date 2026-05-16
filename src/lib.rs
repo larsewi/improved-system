@@ -159,26 +159,39 @@ pub unsafe extern "C" fn lch_block_create(config: *const config::Config) -> i32 
     })
 }
 
+/// ABI-compatible mirror of `lch_buffer_t` from `leech2.h`. An owned byte
+/// buffer handed across the FFI boundary; freed with `lch_patch_free`.
+#[repr(C)]
+pub struct LchBuffer {
+    data: *mut u8,
+    len: usize,
+}
+
+/// Encode a Rust byte vector into an `LchBuffer` whose `data` pointer is
+/// owned by the caller and must be released with `lch_patch_free`.
+fn buffer_from_vec(buf: Vec<u8>) -> LchBuffer {
+    let boxed = buf.into_boxed_slice();
+    let len = boxed.len();
+    let data = Box::into_raw(boxed) as *mut u8;
+    LchBuffer { data, len }
+}
+
 /// # Safety
 /// `config` must be a valid, non-null pointer returned by `lch_init`.
 /// `last_known` must be a valid, null-terminated C string, or NULL.
 /// If NULL, the REPORTED hash is used; if REPORTED does not exist, genesis is used.
-/// `out` and `len` must be valid, non-null pointers.
+/// `out` must be a valid, non-null pointer to an `lch_buffer_t`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn lch_patch_create(
     config: *const config::Config,
     last_known: *const c_char,
-    out: *mut *mut u8,
-    len: *mut usize,
+    out: *mut LchBuffer,
 ) -> i32 {
     ffi_guard("lch_patch_create", FAILURE, || {
         if null_arg("lch_patch_create", "config", config) {
             return FAILURE;
         }
         if null_arg("lch_patch_create", "out", out) {
-            return FAILURE;
-        }
-        if null_arg("lch_patch_create", "len", len) {
             return FAILURE;
         }
 
@@ -219,14 +232,7 @@ pub unsafe extern "C" fn lch_patch_create(
             }
         };
 
-        let buf = buf.into_boxed_slice();
-        let buf_len = buf.len();
-        let ptr = Box::into_raw(buf) as *mut u8;
-
-        unsafe {
-            *out = ptr;
-            *len = buf_len;
-        }
+        unsafe { *out = buffer_from_vec(buf) };
 
         SUCCESS
     })
@@ -234,20 +240,21 @@ pub unsafe extern "C" fn lch_patch_create(
 
 /// # Safety
 /// `config` must be a valid, non-null pointer returned by `lch_init`.
-/// `buf` must be a valid, non-null pointer to `len` bytes.
+/// `patch` must be a valid, non-null pointer to an `lch_buffer_t` whose `data`
+/// field points to `len` bytes previously returned by `lch_patch_create` or
+/// `lch_patch_inject`.
 /// `out` must be a valid, non-null pointer.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn lch_patch_to_sql(
     config: *const config::Config,
-    buf: *const u8,
-    len: usize,
+    patch: *const LchBuffer,
     out: *mut *mut c_char,
 ) -> i32 {
     ffi_guard("lch_patch_to_sql", FAILURE, || {
         if null_arg("lch_patch_to_sql", "config", config) {
             return FAILURE;
         }
-        if null_arg("lch_patch_to_sql", "buf", buf) {
+        if null_arg("lch_patch_to_sql", "patch", patch) {
             return FAILURE;
         }
         if null_arg("lch_patch_to_sql", "out", out) {
@@ -255,7 +262,11 @@ pub unsafe extern "C" fn lch_patch_to_sql(
         }
 
         let config = unsafe { &*config };
-        let data = unsafe { std::slice::from_raw_parts(buf, len) };
+        let patch_buf = unsafe { &*patch };
+        if null_arg("lch_patch_to_sql", "patch->data", patch_buf.data) {
+            return FAILURE;
+        }
+        let data = unsafe { std::slice::from_raw_parts(patch_buf.data, patch_buf.len) };
 
         let patch = match wire::decode_patch(data) {
             Ok(patch) => patch,
@@ -351,36 +362,32 @@ unsafe fn cell_from_ffi(fn_name: &str, cell: &LchCell) -> Option<Cell> {
 
 /// # Safety
 /// `config` must be a valid, non-null pointer returned by `lch_init`.
-/// `in_buf` must be a valid, non-null pointer to `in_len` bytes.
+/// `r#in` must be a valid, non-null pointer to an `lch_buffer_t` whose `data`
+/// field points to `len` bytes.
 /// `name` must be a valid, non-null, null-terminated C string.
 /// `cell` must be a valid, non-null pointer to an `lch_cell_t`; if its
 /// kind is TEXT, the embedded text pointer must be a valid, null-terminated
 /// C string.
-/// `out_buf` and `out_len` must be valid, non-null pointers.
+/// `out` must be a valid, non-null pointer to an `lch_buffer_t`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn lch_patch_inject(
     config: *const config::Config,
-    in_buf: *const u8,
-    in_len: usize,
+    r#in: *const LchBuffer,
     name: *const c_char,
     cell: *const LchCell,
-    out_buf: *mut *mut u8,
-    out_len: *mut usize,
+    out: *mut LchBuffer,
 ) -> i32 {
     ffi_guard("lch_patch_inject", FAILURE, || {
         if null_arg("lch_patch_inject", "config", config) {
             return FAILURE;
         }
-        if null_arg("lch_patch_inject", "in_buf", in_buf) {
+        if null_arg("lch_patch_inject", "in", r#in) {
             return FAILURE;
         }
         if null_arg("lch_patch_inject", "cell", cell) {
             return FAILURE;
         }
-        if null_arg("lch_patch_inject", "out_buf", out_buf) {
-            return FAILURE;
-        }
-        if null_arg("lch_patch_inject", "out_len", out_len) {
+        if null_arg("lch_patch_inject", "out", out) {
             return FAILURE;
         }
 
@@ -393,7 +400,11 @@ pub unsafe extern "C" fn lch_patch_inject(
         };
 
         let config = unsafe { &*config };
-        let data = unsafe { std::slice::from_raw_parts(in_buf, in_len) };
+        let in_buf = unsafe { &*r#in };
+        if null_arg("lch_patch_inject", "in->data", in_buf.data) {
+            return FAILURE;
+        }
+        let data = unsafe { std::slice::from_raw_parts(in_buf.data, in_buf.len) };
 
         let mut patch = match wire::decode_patch(data) {
             Ok(patch) => patch,
@@ -416,14 +427,7 @@ pub unsafe extern "C" fn lch_patch_inject(
             }
         };
 
-        let buf = buf.into_boxed_slice();
-        let buf_len = buf.len();
-        let ptr = Box::into_raw(buf) as *mut u8;
-
-        unsafe {
-            *out_buf = ptr;
-            *out_len = buf_len;
-        }
+        unsafe { *out = buffer_from_vec(buf) };
 
         SUCCESS
     })
@@ -444,23 +448,28 @@ pub unsafe extern "C" fn lch_sql_free(ptr: *mut c_char) {
 
 /// # Safety
 /// `config` must be a valid, non-null pointer returned by `lch_init`.
-/// `buf` must be a valid pointer to `len` bytes, previously returned by `lch_patch_create`.
+/// `patch` must be a valid, non-null pointer to an `lch_buffer_t` whose `data`
+/// field points to `len` bytes previously returned by `lch_patch_create` or
+/// `lch_patch_inject`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn lch_patch_applied(
     config: *const config::Config,
-    buf: *const u8,
-    len: usize,
+    patch: *const LchBuffer,
 ) -> i32 {
     ffi_guard("lch_patch_applied", FAILURE, || {
         if null_arg("lch_patch_applied", "config", config) {
             return FAILURE;
         }
-        if null_arg("lch_patch_applied", "buf", buf) {
+        if null_arg("lch_patch_applied", "patch", patch) {
             return FAILURE;
         }
 
         let config = unsafe { &*config };
-        let data = unsafe { std::slice::from_raw_parts(buf, len) };
+        let patch_buf = unsafe { &*patch };
+        if null_arg("lch_patch_applied", "patch->data", patch_buf.data) {
+            return FAILURE;
+        }
+        let data = unsafe { std::slice::from_raw_parts(patch_buf.data, patch_buf.len) };
 
         let patch = match wire::decode_patch(data) {
             Ok(p) => p,
@@ -500,16 +509,26 @@ pub unsafe extern "C" fn lch_patch_failed(config: *const config::Config) -> i32 
 }
 
 /// # Safety
-/// `buf` must be a valid pointer to `len` bytes, previously returned by `lch_patch_create`,
-/// or NULL (no-op).
+/// `buf` must be NULL (no-op) or a valid pointer to an `lch_buffer_t` whose
+/// `data` field was previously filled in by `lch_patch_create` or
+/// `lch_patch_inject`. A buffer with `data == NULL` is a no-op.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn lch_patch_free(buf: *mut u8, len: usize) {
+pub unsafe extern "C" fn lch_patch_free(buf: *mut LchBuffer) {
     ffi_guard("lch_patch_free", (), || {
-        if !buf.is_null() {
-            unsafe {
-                drop(Box::from_raw(std::ptr::slice_from_raw_parts_mut(buf, len)));
-            }
+        if buf.is_null() {
+            return;
         }
+        let buf = unsafe { &mut *buf };
+        if buf.data.is_null() {
+            return;
+        }
+        unsafe {
+            drop(Box::from_raw(std::ptr::slice_from_raw_parts_mut(
+                buf.data, buf.len,
+            )));
+        }
+        buf.data = std::ptr::null_mut();
+        buf.len = 0;
     })
 }
 
