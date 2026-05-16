@@ -59,33 +59,30 @@ int main(int argc, char *argv[]) {
     return EXIT_FAILURE;
   }
 
-  uint8_t *buf = NULL;
-  size_t len = 0;
-  ret = lch_patch_create(cfg, NULL, &buf, &len);
+  lch_buffer_t patch = {0};
+  ret = lch_patch_create(cfg, NULL, &patch);
   if (ret == LCH_FAILURE) {
     fprintf(stderr, "lch_patch_create failed\n");
     lch_deinit(cfg);
     return EXIT_FAILURE;
   }
 
-  uint8_t *injected_buf = NULL;
-  size_t injected_len = 0;
+  lch_buffer_t injected = {0};
   lch_cell_t hostkey_cell = {.kind = LCH_VALUE_TEXT, .text = "abc123"};
-  ret = lch_patch_inject(cfg, buf, len, "hostkey", &hostkey_cell, &injected_buf,
-                         &injected_len);
+  ret = lch_patch_inject(cfg, &patch, "hostkey", &hostkey_cell, &injected);
   if (ret == LCH_FAILURE) {
     fprintf(stderr, "lch_patch_inject failed\n");
-    lch_patch_free(buf, len);
+    lch_buffer_free(&patch);
     lch_deinit(cfg);
     return EXIT_FAILURE;
   }
 
   char *sql = NULL;
-  ret = lch_patch_to_sql(cfg, injected_buf, injected_len, &sql);
+  ret = lch_patch_to_sql(cfg, &injected, &sql);
   if (ret == LCH_FAILURE) {
     fprintf(stderr, "lch_patch_to_sql failed\n");
-    lch_patch_free(injected_buf, injected_len);
-    lch_patch_free(buf, len);
+    lch_buffer_free(&injected);
+    lch_buffer_free(&patch);
     lch_deinit(cfg);
     return EXIT_FAILURE;
   }
@@ -94,18 +91,18 @@ int main(int argc, char *argv[]) {
       strstr(sql, "'abc123'") == NULL) {
     fprintf(stderr, "lch_patch_inject: injected field not present in SQL\n");
     lch_sql_free(sql);
-    lch_patch_free(injected_buf, injected_len);
-    lch_patch_free(buf, len);
+    lch_buffer_free(&injected);
+    lch_buffer_free(&patch);
     lch_deinit(cfg);
     return EXIT_FAILURE;
   }
 
-  lch_patch_free(injected_buf, injected_len);
+  lch_buffer_free(&injected);
 
-  ret = lch_patch_applied(cfg, buf, len);
+  ret = lch_patch_applied(cfg, &patch);
   if (ret == LCH_FAILURE) {
     fprintf(stderr, "lch_patch_applied failed\n");
-    lch_patch_free(buf, len);
+    lch_buffer_free(&patch);
     lch_deinit(cfg);
     return EXIT_FAILURE;
   }
@@ -113,12 +110,12 @@ int main(int argc, char *argv[]) {
   ret = lch_patch_failed(cfg);
   if (ret == LCH_FAILURE) {
     fprintf(stderr, "lch_patch_failed failed\n");
-    lch_patch_free(buf, len);
+    lch_buffer_free(&patch);
     lch_deinit(cfg);
     return EXIT_FAILURE;
   }
 
-  lch_patch_free(buf, len);
+  lch_buffer_free(&patch);
   lch_sql_free(sql);
   lch_deinit(cfg);
 

@@ -262,21 +262,20 @@ lch_config_t *cfg = lch_init("/path/to/workdir");
 
 lch_block_create(cfg);
 
-uint8_t *buf;
-size_t len;
-lch_patch_create(cfg, NULL, &buf, &len);
+lch_buffer_t patch = {0};
+lch_patch_create(cfg, NULL, &patch);
 
 char *sql;
-lch_patch_to_sql(cfg, buf, len, &sql);
+lch_patch_to_sql(cfg, &patch, &sql);
 printf("%s", sql);
 lch_sql_free(sql);
 
-if (hub_send(buf, len)) {
-  lch_patch_applied(cfg, buf, len);
+if (hub_send(patch.data, patch.len)) {
+  lch_patch_applied(cfg, &patch);
 } else {
   lch_patch_failed(cfg);
 }
-lch_patch_free(buf, len);
+lch_buffer_free(&patch);
 
 lch_deinit(cfg);
 ```

@@ -12,17 +12,17 @@ libleech2 \- C API for tracking CSV changes and producing SQL patches
 .PP
 .BI "int lch_block_create(const lch_config_t *" cfg );
 .PP
-.BI "int lch_patch_create(const lch_config_t *" cfg ", const char *" hash ", uint8_t **" buf ", size_t *" len );
+.BI "int lch_patch_create(const lch_config_t *" cfg ", const char *" hash ", lch_buffer_t *" out );
 .br
-.BI "int lch_patch_to_sql(const lch_config_t *" cfg ", const uint8_t *" buf ", size_t " len ", char **" sql );
+.BI "int lch_patch_to_sql(const lch_config_t *" cfg ", const lch_buffer_t *" patch ", char **" sql );
 .br
-.BI "int lch_patch_inject(const lch_config_t *" cfg ", const uint8_t *" in_buf ", size_t " in_len ", const char *" name ", const char *" value ", const char *" kind ", uint8_t **" out_buf ", size_t *" out_len );
+.BI "int lch_patch_inject(const lch_config_t *" cfg ", const lch_buffer_t *" in ", const char *" name ", const lch_cell_t *" cell ", lch_buffer_t *" out );
 .br
-.BI "int lch_patch_applied(const lch_config_t *" cfg ", const uint8_t *" buf ", size_t " len );
+.BI "int lch_patch_applied(const lch_config_t *" cfg ", const lch_buffer_t *" patch );
 .br
 .BI "int lch_patch_failed(const lch_config_t *" cfg );
 .PP
-.BI "void lch_patch_free(uint8_t *" buf ", size_t " len );
+.BI "void lch_buffer_free(lch_buffer_t *" buf );
 .br
 .BI "void lch_sql_free(char *" sql );
 .SH DESCRIPTION
@@ -98,14 +98,12 @@ the previous state, and write a new block together with updated STATE and HEAD
 files. History truncation is performed afterwards.
 .SS Patch operations
 .TP
-.BI "int lch_patch_create(const lch_config_t *" cfg ", const char *" hash ", uint8_t **" buf ", size_t *" len )
+.BI "int lch_patch_create(const lch_config_t *" cfg ", const char *" hash ", lch_buffer_t *" out )
 Walk the block chain from HEAD back to
 .I hash
 and produce a consolidated patch. The patch is encoded (protobuf + optional zstd
-compression) into a buffer written to
-.I buf
-and
-.IR len .
+compression) into the buffer written to
+.IR out .
 .IP
 If
 .I hash
@@ -118,11 +116,11 @@ allows callers to bypass the built-in REPORTED mechanism and implement their own
 system for tracking which blocks have been reported.
 .IP
 The buffer must eventually be freed with
-.BR lch_patch_free ().
+.BR lch_buffer_free ().
 .TP
-.BI "int lch_patch_to_sql(const lch_config_t *" cfg ", const uint8_t *" buf ", size_t " len ", char **" sql )
+.BI "int lch_patch_to_sql(const lch_config_t *" cfg ", const lch_buffer_t *" patch ", char **" sql )
 Decode the patch in
-.I buf
+.I patch
 and produce SQL statements that apply the patch to a downstream database. Delta
 payloads generate DELETE, INSERT, and UPDATE statements. State payloads generate
 TRUNCATE followed by INSERT statements. All statements are wrapped in BEGIN /
@@ -135,52 +133,43 @@ is set to NULL and the function returns
 Otherwise, the string must be freed with
 .BR lch_sql_free ().
 .TP
-.BI "int lch_patch_inject(const lch_config_t *" cfg ", const uint8_t *" in_buf ", size_t " in_len ", const char *" name ", const char *" value ", const char *" kind ", uint8_t **" out_buf ", size_t *" out_len )
+.BI "int lch_patch_inject(const lch_config_t *" cfg ", const lch_buffer_t *" in ", const char *" name ", const lch_cell_t *" cell ", lch_buffer_t *" out )
 Decode the patch in
-.IR in_buf ,
+.IR in ,
 add or overwrite an injected field with the given
-.IR name ,
-.IR value ,
-and
-.IR kind ,
+.I name
+and typed
+.IR cell ,
 and write a newly encoded patch to
-.I out_buf
-and
-.IR out_len .
+.IR out .
 The input buffer is not modified; the caller manages its lifetime independently.
 .IP
-.I kind
-must be
-.BR TEXT ,
-.BR NUMBER ,
-or
-.BR BOOLEAN
-(case-insensitive) and controls how
-.I value
-is formatted as a SQL literal. For
-.BR BOOLEAN ,
-.I value
-must be the exact string
-.B true
-or
-.B false
-(case-sensitive); per-field
-.BR true / false
-sentinel overrides defined in
-.B config.toml
-do not apply to injected fields.
+The
+.B kind
+tag on
+.I cell
+controls how the value is formatted as a SQL literal:
+.B LCH_VALUE_TEXT
+becomes a single-quoted string,
+.B LCH_VALUE_NUMBER
+is emitted as a numeric literal, and
+.B LCH_VALUE_BOOLEAN
+is emitted as
+.BR TRUE / FALSE .
+.B LCH_VALUE_NULL
+is not accepted.
 .IP
 If a field with the same
 .I name
-is already present on the patch — whether from static configuration or a
-prior injection — both its value and type are replaced.
+is already present on the patch -- whether from static configuration or a
+prior injection -- both its value and kind are replaced.
 .IP
 The buffer written to
-.I out_buf
+.I out
 must eventually be freed with
-.BR lch_patch_free ().
+.BR lch_buffer_free ().
 .TP
-.BI "int lch_patch_applied(const lch_config_t *" cfg ", const uint8_t *" buf ", size_t " len )
+.BI "int lch_patch_applied(const lch_config_t *" cfg ", const lch_buffer_t *" patch )
 Mark a patch as applied by updating the REPORTED file with the patch's head
 hash. Future truncation uses this to know which blocks are safe to remove.
 .TP
@@ -191,10 +180,11 @@ will produce a full state patch (TRUNCATE + INSERT for all tables). Safe to call
 regardless of whether a REPORTED file exists.
 .SS Memory management
 .TP
-.BI "void lch_patch_free(uint8_t *" buf ", size_t " len )
-Free a patch buffer previously returned by
-.BR lch_patch_create ()
-without marking it as applied. Passing NULL is a safe no-op.
+.BI "void lch_buffer_free(lch_buffer_t *" buf )
+Free a library-owned buffer. Passing NULL is a safe no-op, as is passing a
+buffer whose
+.B data
+field is NULL.
 .TP
 .BI "void lch_sql_free(char *" sql )
 Free an SQL string previously returned by
@@ -225,6 +215,14 @@ Callback function type:
 The
 .I msg
 string is only valid for the duration of the callback invocation.
+.TP
+.B lch_buffer_t
+Owned byte buffer with fields
+.BI "uint8_t *" data
+and
+.BI "size_t " len .
+Released with
+.BR lch_buffer_free ().
 .SH RETURN VALUES
 Functions returning
 .B int
@@ -242,7 +240,7 @@ detailed error messages are delivered through it.
 returns a pointer on success or NULL on failure.
 .PP
 .BR lch_deinit (),
-.BR lch_patch_free (),
+.BR lch_buffer_free (),
 and
 .BR lch_sql_free ()
 do not return a value.
@@ -298,16 +296,15 @@ int main(void) {
         return EXIT_FAILURE;
     }
 
-    uint8_t *buf;
-    size_t len;
-    if (lch_patch_create(cfg, NULL, &buf, &len) != LCH_SUCCESS) {
+    lch_buffer_t patch = {0};
+    if (lch_patch_create(cfg, NULL, &patch) != LCH_SUCCESS) {
         lch_deinit(cfg);
         return EXIT_FAILURE;
     }
 
     char *sql;
-    if (lch_patch_to_sql(cfg, buf, len, &sql) != LCH_SUCCESS) {
-        lch_patch_free(buf, len);
+    if (lch_patch_to_sql(cfg, &patch, &sql) != LCH_SUCCESS) {
+        lch_buffer_free(&patch);
         lch_deinit(cfg);
         return EXIT_FAILURE;
     }
@@ -318,8 +315,8 @@ int main(void) {
     }
 
     /* Mark as applied on success, or failed on error */
-    lch_patch_applied(cfg, buf, len);
-    lch_patch_free(buf, len);
+    lch_patch_applied(cfg, &patch);
+    lch_buffer_free(&patch);
 
     lch_deinit(cfg);
     return EXIT_SUCCESS;
