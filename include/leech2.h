@@ -261,11 +261,7 @@ typedef struct {
  *
  * @param cfg        Valid config handle (must not be NULL).
  * @param callbacks  Optional callback bundle. May be NULL when every table
- *                   in @p cfg is CSV-backed. A config containing any
- *                   callback-backed table requires @p callbacks to be
- *                   non-NULL with @c read_cell set; otherwise the call
- *                   returns LCH_FAILURE with a message naming the offending
- *                   table.
+ *                   in @p cfg is CSV-backed.
  * @return LCH_SUCCESS on success, LCH_FAILURE on error.
  */
 extern int lch_block_create(const lch_config_t *cfg,
