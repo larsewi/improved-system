@@ -101,7 +101,7 @@ impl State {
                         name
                     );
                 };
-                load_callback_table_with_lifecycle(name, table_config, cbs)?
+                load_from_callback(name, table_config, cbs)?
             };
             tables.insert(name.clone(), table);
         }
@@ -129,7 +129,7 @@ impl State {
 /// always fires when `table_begin` succeeded, including on the error path, so
 /// the caller's per-table resources (a DB cursor, a buffer) can always be
 /// released and a partial table can be rolled back via `status`.
-fn load_callback_table_with_lifecycle(
+fn load_from_callback(
     name: &str,
     table_config: &TableConfig,
     callbacks: &Callbacks,
