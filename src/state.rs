@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::ffi::CString;
 use std::fmt;
 use std::path::Path;
 
@@ -134,19 +133,25 @@ fn load_from_callback(
     table_config: &TableConfig,
     callbacks: &Callbacks,
 ) -> Result<Table> {
-    let table_c =
-        CString::new(name).with_context(|| format!("table name '{}' contains a NUL byte", name))?;
-    callbacks
-        .table_begin(&table_c)
+    let field_names: Vec<&str> = table_config
+        .fields
+        .iter()
+        .map(|f| f.name.as_str())
+        .collect();
+    let bound = callbacks
+        .for_table(name, &field_names)
+        .with_context(|| format!("table '{}'", name))?;
+    bound
+        .table_begin()
         .with_context(|| format!("table '{}'", name))?;
 
-    let load_result = Table::load_from_callbacks(name, table_config, callbacks, &table_c);
+    let load_result = Table::load_from_callbacks(name, table_config, &bound);
     let end_status = if load_result.is_ok() {
         SUCCESS
     } else {
         FAILURE
     };
-    let end_result = callbacks.table_end(&table_c, end_status);
+    let end_result = bound.table_end(end_status);
 
     let table = load_result.with_context(|| format!("table '{}'", name))?;
     end_result.with_context(|| format!("table '{}'", name))?;

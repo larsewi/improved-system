@@ -1,12 +1,11 @@
 use std::collections::HashMap;
-use std::ffi::CString;
 use std::fmt;
 use std::fs::File;
 use std::path::Path;
 
 use anyhow::{Context, Result};
 
-use crate::callbacks::{Callbacks, CellResult};
+use crate::callbacks::{CellResult, TableCallbacks};
 use crate::cell::{
     Cell, DEFAULT_FALSE_SENTINEL, DEFAULT_TRUE_SENTINEL, Kind, display_proto_cells, parse_boolean,
     parse_typed_cell,
@@ -116,14 +115,10 @@ impl Table {
     /// canonical order (primary keys lex-sorted, then subsidiaries lex-sorted)
     /// and the `col` it passes is the field's 0-based position in
     /// `config.fields` (declaration order).
-    ///
-    /// `table_c` is the table name pre-encoded as a `CStr` so the row loop
-    /// reuses the same pointer across every cell call.
     pub fn load_from_callbacks(
         name: &str,
         config: &TableConfig,
-        callbacks: &Callbacks,
-        table_c: &std::ffi::CStr,
+        callbacks: &TableCallbacks<'_>,
     ) -> Result<Self> {
         // The "field indices" passed into compute_canonical_columns are the
         // 0-based declaration-order positions in config.fields. That matches
@@ -142,29 +137,12 @@ impl Table {
             .map(|(_, field)| field.name.clone())
             .collect();
 
-        // Pre-encode every field name as a `CStr` so the inner loop reuses
-        // the same pointers across every cell call.
-        let mut field_cstrings: Vec<CString> = Vec::with_capacity(config.fields.len());
-        for field in &config.fields {
-            field_cstrings.push(
-                CString::new(field.name.as_str())
-                    .with_context(|| format!("field name '{}' contains a NUL byte", field.name))?,
-            );
-        }
-
         let mut records: HashMap<Vec<Cell>, Vec<Cell>> = HashMap::new();
         let mut row: usize = 0;
 
         loop {
-            let outcome = fetch_callback_row(
-                name,
-                callbacks,
-                table_c,
-                &field_cstrings,
-                row,
-                &primary_columns,
-                &subsidiary_columns,
-            )?;
+            let outcome =
+                fetch_callback_row(name, callbacks, row, &primary_columns, &subsidiary_columns)?;
             match outcome {
                 RowOutcome::Row {
                     primary_key,
@@ -347,9 +325,7 @@ enum RowOutcome {
 /// about that row: a populated row, a filtered row, or end-of-table.
 fn fetch_callback_row(
     name: &str,
-    callbacks: &Callbacks,
-    table_c: &std::ffi::CStr,
-    field_cstrings: &[CString],
+    callbacks: &TableCallbacks<'_>,
     row: usize,
     primary_columns: &[(usize, &FieldConfig)],
     subsidiary_columns: &[(usize, &FieldConfig)],
@@ -362,8 +338,7 @@ fn fetch_callback_row(
         (&mut subsidiary, subsidiary_columns),
     ] {
         for &(decl_idx, field_cfg) in group_cols {
-            let field_c = &field_cstrings[decl_idx];
-            match callbacks.read_cell(table_c, row, decl_idx, field_c)? {
+            match callbacks.read_cell(row, decl_idx)? {
                 CellResult::Cell(cell) => {
                     validate_cell(&cell, field_cfg)
                         .with_context(|| format!("row {} field '{}'", row + 1, field_cfg.name))?;
@@ -868,7 +843,7 @@ mod tests {
     // through an `LchCell`. The script owns the CStrings backing TEXT cells so
     // their pointers stay valid for the duration of the call.
 
-    use crate::callbacks::LchCallbacks;
+    use crate::callbacks::{Callbacks, LchCallbacks};
     use crate::ffi::{
         LCH_END_OF_TABLE, LCH_FILTER_RECORD, LCH_VALUE_NULL, LchCell, LchCellPayload,
         SUCCESS as FFI_SUCCESS,
@@ -962,6 +937,13 @@ mod tests {
         })
     }
 
+    fn load_table(name: &str, config: &TableConfig) -> Result<Table> {
+        let callbacks = make_callbacks();
+        let field_names: Vec<&str> = config.fields.iter().map(|f| f.name.as_str()).collect();
+        let bound = callbacks.for_table(name, &field_names).unwrap();
+        Table::load_from_callbacks(name, config, &bound)
+    }
+
     fn typed_config(fields: Vec<FieldConfig>) -> TableConfig {
         TableConfig {
             source: None,
@@ -991,8 +973,7 @@ mod tests {
             ],
         });
 
-        let table_c = CString::new("t").unwrap();
-        let table = Table::load_from_callbacks("t", &config, &make_callbacks(), &table_c).unwrap();
+        let table = load_table("t", &config).unwrap();
 
         assert_eq!(table.primary_key_names, vec!["id".to_string()]);
         assert_eq!(table.subsidiary_value_names, vec!["name".to_string()]);
@@ -1012,8 +993,7 @@ mod tests {
         ]);
         install_script(Script { rows: vec![] });
 
-        let table_c = CString::new("t").unwrap();
-        let table = Table::load_from_callbacks("t", &config, &make_callbacks(), &table_c).unwrap();
+        let table = load_table("t", &config).unwrap();
 
         assert!(table.records.is_empty());
         clear_script();
@@ -1034,8 +1014,7 @@ mod tests {
             ],
         });
 
-        let table_c = CString::new("t").unwrap();
-        let table = Table::load_from_callbacks("t", &config, &make_callbacks(), &table_c).unwrap();
+        let table = load_table("t", &config).unwrap();
 
         assert_eq!(table.records.len(), 2);
         assert!(table.records.contains_key(&vec![Cell::Number(1.0)]));
@@ -1057,9 +1036,7 @@ mod tests {
             ],
         });
 
-        let table_c = CString::new("t").unwrap();
-        let err =
-            Table::load_from_callbacks("t", &config, &make_callbacks(), &table_c).unwrap_err();
+        let err = load_table("t", &config).unwrap_err();
         assert!(
             format!("{:#}", err).contains("duplicate primary key"),
             "got: {err:#}"
@@ -1080,9 +1057,7 @@ mod tests {
             ])],
         });
 
-        let table_c = CString::new("t").unwrap();
-        let err =
-            Table::load_from_callbacks("t", &config, &make_callbacks(), &table_c).unwrap_err();
+        let err = load_table("t", &config).unwrap_err();
         assert!(format!("{:#}", err).contains("primary-key"), "got: {err:#}");
         clear_script();
     }
@@ -1100,9 +1075,7 @@ mod tests {
             ])],
         });
 
-        let table_c = CString::new("t").unwrap();
-        let err =
-            Table::load_from_callbacks("t", &config, &make_callbacks(), &table_c).unwrap_err();
+        let err = load_table("t", &config).unwrap_err();
         assert!(format!("{:#}", err).contains("kind"), "got: {err:#}");
         clear_script();
     }

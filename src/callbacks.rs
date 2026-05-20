@@ -1,15 +1,15 @@
 //! Safe-Rust adapter for the FFI callback bundle that drives the
 //! callback-based path of `lch_block_create`. The repr-C mirror
 //! ([`LchCallbacks`]) is decoded once at the FFI boundary into a [`Callbacks`]
-//! value that the block-creation pipeline consults from then on.
+//! value, then bound to one table at a time via [`Callbacks::for_table`].
 //!
 //! Not `Send`/`Sync`: callbacks are invoked exclusively on the thread that
 //! called `lch_block_create`, and the raw `usr_data` pointer is the C
 //! caller's responsibility.
 
-use std::ffi::{CStr, c_char, c_void};
+use std::ffi::{CString, c_char, c_void};
 
-use anyhow::{Result, bail};
+use anyhow::{Context, Result, bail};
 
 use crate::cell::Cell;
 use crate::ffi::{
@@ -70,19 +70,50 @@ impl Callbacks {
         }
     }
 
-    /// Invoke the optional `table_begin` hook for one callback-backed table.
-    /// A `None` hook is a successful no-op.
-    pub fn table_begin(&self, table: &CStr) -> Result<()> {
-        let Some(cb) = self.table_begin else {
+    /// Bind this callback bundle to one table. The returned handle owns the
+    /// pre-encoded C strings for the table name and every field, so the inner
+    /// row/cell loop never has to touch a `CString` itself.
+    pub fn for_table(&self, name: &str, field_names: &[&str]) -> Result<TableCallbacks<'_>> {
+        let table_c = CString::new(name)
+            .with_context(|| format!("table name '{}' contains a NUL byte", name))?;
+        let mut field_cstrings = Vec::with_capacity(field_names.len());
+        for field in field_names {
+            field_cstrings.push(
+                CString::new(*field)
+                    .with_context(|| format!("field name '{}' contains a NUL byte", field))?,
+            );
+        }
+        Ok(TableCallbacks {
+            inner: self,
+            table_c,
+            field_cstrings,
+        })
+    }
+}
+
+/// A [`Callbacks`] bundle bound to one specific table. Holds the table name
+/// and every field name pre-encoded as `CString` so the inner cell loop reuses
+/// the same pointers across every callback invocation.
+pub struct TableCallbacks<'a> {
+    inner: &'a Callbacks,
+    table_c: CString,
+    field_cstrings: Vec<CString>,
+}
+
+impl TableCallbacks<'_> {
+    /// Invoke the optional `table_begin` hook. A `None` hook is a successful
+    /// no-op.
+    pub fn table_begin(&self) -> Result<()> {
+        let Some(cb) = self.inner.table_begin else {
             return Ok(());
         };
-        let rc = unsafe { cb(table.as_ptr(), self.usr_data) };
+        let rc = unsafe { cb(self.table_c.as_ptr(), self.inner.usr_data) };
         if rc == SUCCESS {
             Ok(())
         } else {
             bail!(
                 "table_begin callback returned failure for table '{}'",
-                table.to_string_lossy()
+                self.table_c.to_string_lossy()
             );
         }
     }
@@ -90,49 +121,43 @@ impl Callbacks {
     /// Invoke the optional `table_end` hook. Fires for every table whose
     /// `table_begin` returned successfully, including on the error path;
     /// `status` mirrors the C-side `LCH_SUCCESS` / `LCH_FAILURE` distinction.
-    pub fn table_end(&self, table: &CStr, status: i32) -> Result<()> {
-        let Some(cb) = self.table_end else {
+    pub fn table_end(&self, status: i32) -> Result<()> {
+        let Some(cb) = self.inner.table_end else {
             return Ok(());
         };
-        let rc = unsafe { cb(table.as_ptr(), status, self.usr_data) };
+        let rc = unsafe { cb(self.table_c.as_ptr(), status, self.inner.usr_data) };
         if rc == SUCCESS {
             Ok(())
         } else {
             bail!(
                 "table_end callback returned failure for table '{}'",
-                table.to_string_lossy()
+                self.table_c.to_string_lossy()
             );
         }
     }
 
-    /// Invoke the required `read_cell` hook for one (row, column) pair.
-    /// `table` and `field` are pre-built `&CStr` so the row loop reuses the
-    /// same pointers across every cell call.
-    pub fn read_cell(
-        &self,
-        table: &CStr,
-        row: usize,
-        col: usize,
-        field: &CStr,
-    ) -> Result<CellResult> {
-        let Some(cb) = self.read_cell else {
+    /// Invoke the required `read_cell` hook for one (row, column) pair. `col`
+    /// indexes the field-name list this handle was bound with.
+    pub fn read_cell(&self, row: usize, col: usize) -> Result<CellResult> {
+        let Some(cb) = self.inner.read_cell else {
             bail!(
                 "table '{}' is callback-backed but no read_cell callback was provided",
-                table.to_string_lossy()
+                self.table_c.to_string_lossy()
             );
         };
+        let field = &self.field_cstrings[col];
         let mut out = LchCell {
             kind: LCH_VALUE_NULL,
             payload: LchCellPayload { number: 0.0 },
         };
         let rc = unsafe {
             cb(
-                table.as_ptr(),
+                self.table_c.as_ptr(),
                 row,
                 col,
                 field.as_ptr(),
                 &mut out,
-                self.usr_data,
+                self.inner.usr_data,
             )
         };
         match rc {
@@ -140,7 +165,7 @@ impl Callbacks {
                 let Some(cell) = (unsafe { cell_from_ffi("lch_block_create", &out) }) else {
                     bail!(
                         "invalid cell from callback for table '{}' row {} field '{}'",
-                        table.to_string_lossy(),
+                        self.table_c.to_string_lossy(),
                         row + 1,
                         field.to_string_lossy(),
                     );
@@ -151,7 +176,7 @@ impl Callbacks {
             LCH_FILTER_RECORD => Ok(CellResult::FilterRecord),
             _ => bail!(
                 "read_cell callback returned failure for table '{}' row {} field '{}'",
-                table.to_string_lossy(),
+                self.table_c.to_string_lossy(),
                 row + 1,
                 field.to_string_lossy(),
             ),
