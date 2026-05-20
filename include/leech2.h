@@ -46,6 +46,11 @@ typedef enum {
 } lch_kind_t;
 
 typedef struct {
+  /* Must match the declared kind of the field this cell represents:
+   *   TEXT field    -> LCH_VALUE_TEXT or LCH_VALUE_NULL
+   *   NUMBER field  -> LCH_VALUE_NUMBER or LCH_VALUE_NULL
+   *   BOOLEAN field -> LCH_VALUE_BOOLEAN or LCH_VALUE_NULL
+   * LCH_VALUE_NULL is rejected on primary-key fields. */
   lch_kind_t kind;
   union {
     /* Valid when kind == LCH_VALUE_TEXT. Null-terminated, must not be NULL;
@@ -197,12 +202,6 @@ typedef int (*lch_table_end_cb_t)(const char *table, int status,
  * already accepted for the row are discarded. The natural caller
  * implementation -- "if (row >= my_data.len()) return LCH_END_OF_TABLE" --
  * makes this automatic.
- *
- * The kind of @p out_cell must match the field's declared kind:
- *   TEXT field    -> TEXT or NULL
- *   NUMBER field  -> NUMBER or NULL
- *   BOOLEAN field -> BOOLEAN or NULL
- * NULL is rejected on primary-key fields.
  *
  * Filters configured in config.toml (max-field-length, include, exclude) do
  * NOT apply to callback-backed tables; the callback is the sole authority
