@@ -203,9 +203,10 @@ typedef int (*lch_table_end_cb_t)(const char *table, int status,
  * implementation -- "if (row >= my_data.len()) return LCH_END_OF_TABLE" --
  * makes this automatic.
  *
- * Filters configured in config.toml (max-field-length, include, exclude) do
- * NOT apply to callback-backed tables; the callback is the sole authority
- * for which rows are included, via LCH_FILTER_RECORD.
+ * CSV-specific config attributes -- per-field null/true/false sentinels and
+ * the filters block (max-field-length, include, exclude) -- do not apply to
+ * callback-backed tables. The callback is the sole authority for which rows
+ * are included, via LCH_FILTER_RECORD.
  *
  * @param table       Null-terminated table name. Borrowed.
  * @param row         0-based row index, monotonically non-decreasing.
