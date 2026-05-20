@@ -210,9 +210,8 @@ typedef int (*lch_table_end_cb_t)(const char *table, int status,
  *
  * @param table       Null-terminated table name. Borrowed.
  * @param row         0-based row index, monotonically non-decreasing.
- * @param col         0-based index of the field within the table's declared
- *                    fields list (the same order config.toml shows in error
- *                    messages).
+ * @param col         0-based index of the field in config.toml declaration
+ *                    order (i.e. the position of its [[table.fields]] block).
  * @param field_name  Null-terminated name of the field at @p col, looked up
  *                    for convenience. Borrowed.
  * @param out_cell    On entry, zero-initialised. On LCH_SUCCESS return,
