@@ -137,12 +137,20 @@ must match the field's declared kind (TEXT / NUMBER / BOOLEAN), with
 .B LCH_VALUE_NULL
 accepted on any non-primary-key field.
 .IP
-Filters configured in
+CSV-specific
 .B config.toml
-(\fBmax-field-length\fR, \fBinclude\fR, \fBexclude\fR) apply to CSV-backed
-tables only. When filters are configured alongside any callback-backed
-table, a warning is logged at block creation; the callback owns row
-inclusion for those tables via
+attributes apply to CSV-backed tables only: per-field
+.BR null ,
+.BR true ,
+and
+.B false
+sentinels, and the filters block
+.RB ( max-field-length ,
+.BR include ,
+.BR exclude ).
+When filters are configured alongside any callback-backed table, a
+warning is logged at block creation; the callback owns row inclusion for
+those tables via
 .BR LCH_FILTER_RECORD .
 .SS Patch operations
 .TP
