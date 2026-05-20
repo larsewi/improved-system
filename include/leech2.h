@@ -147,8 +147,6 @@ extern void lch_deinit(lch_config_t *cfg);
  * open a database cursor, execute a query, allocate per-table buffers, and
  * stash any handle through @p usr_data.
  *
- * Not invoked for CSV-backed tables.
- *
  * @param table     Null-terminated table name. Borrowed; valid only for the
  *                  duration of the call.
  * @param usr_data  Opaque pointer from lch_callbacks_t::usr_data.
