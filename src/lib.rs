@@ -2,8 +2,7 @@ use std::ffi::{CStr, CString, c_char, c_void};
 use std::path::PathBuf;
 
 use crate::ffi::{
-    FAILURE, LchBuffer, LchCell, SUCCESS, buffer_from_vec, cell_from_ffi, cstr_arg, ffi_guard,
-    null_arg,
+    FAILURE, LchBuffer, LchCell, SUCCESS, cell_from_ffi, cstr_arg, ffi_guard, null_arg,
 };
 
 pub mod block;
@@ -179,7 +178,7 @@ pub unsafe extern "C" fn lch_patch_create(
             }
         };
 
-        unsafe { *out = buffer_from_vec(buf) };
+        unsafe { *out = buf.into() };
 
         SUCCESS
     })
@@ -318,7 +317,7 @@ pub unsafe extern "C" fn lch_patch_inject(
             }
         };
 
-        unsafe { *out = buffer_from_vec(buf) };
+        unsafe { *out = buf.into() };
 
         SUCCESS
     })

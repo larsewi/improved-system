@@ -79,13 +79,13 @@ pub struct LchBuffer {
     pub len: usize,
 }
 
-/// Encode a Rust byte vector into an `LchBuffer` whose `data` pointer is
-/// owned by the caller and must be released with `lch_buffer_free`.
-pub fn buffer_from_vec(buf: Vec<u8>) -> LchBuffer {
-    let boxed = buf.into_boxed_slice();
-    let len = boxed.len();
-    let data = Box::into_raw(boxed) as *mut u8;
-    LchBuffer { data, len }
+impl From<Vec<u8>> for LchBuffer {
+    fn from(buf: Vec<u8>) -> Self {
+        let boxed = buf.into_boxed_slice();
+        let len = boxed.len();
+        let data = Box::into_raw(boxed) as *mut u8;
+        LchBuffer { data, len }
+    }
 }
 
 /// ABI-compatible mirror of `lch_cell_t` from `leech2.h`. Only used to type
