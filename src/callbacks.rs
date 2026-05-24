@@ -183,3 +183,35 @@ impl TableCallbacks<'_> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ffi::FAILURE;
+
+    unsafe extern "C" fn fail_table_begin(_table: *const c_char, _usr_data: *mut c_void) -> i32 {
+        FAILURE
+    }
+
+    fn callbacks_with_failing_begin() -> Callbacks {
+        Callbacks::from_ffi(&LchCallbacks {
+            table_begin: Some(fail_table_begin),
+            read_cell: None,
+            table_end: None,
+            usr_data: std::ptr::null_mut(),
+        })
+    }
+
+    #[test]
+    fn test_table_begin_failure_propagates() {
+        let callbacks = callbacks_with_failing_begin();
+        let bound = callbacks.for_table("t", &["id"]).unwrap();
+        let err = bound.table_begin().unwrap_err();
+        let msg = format!("{:#}", err);
+        assert!(
+            msg.contains("table_begin callback returned failure"),
+            "got: {msg}"
+        );
+        assert!(msg.contains("table 't'"), "got: {msg}");
+    }
+}
