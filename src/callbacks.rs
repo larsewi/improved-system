@@ -17,7 +17,7 @@ use crate::ffi::{
 };
 
 type TableBeginFn = unsafe extern "C" fn(*const c_char, *mut c_void) -> i32;
-type TableEndFn = unsafe extern "C" fn(*const c_char, i32, *mut c_void) -> i32;
+type TableEndFn = unsafe extern "C" fn(*const c_char, *mut c_void) -> i32;
 type ReadCellFn = unsafe extern "C" fn(
     *const c_char,
     usize,
@@ -118,13 +118,12 @@ impl TableCallbacks<'_> {
     }
 
     /// Invoke the optional `table_end` hook. Fires for every table whose
-    /// `table_begin` returned successfully, including on the error path;
-    /// `status` mirrors the C-side `LCH_SUCCESS` / `LCH_FAILURE` distinction.
-    pub fn table_end(&self, status: i32) -> Result<()> {
+    /// `table_begin` returned successfully, including on the error path.
+    pub fn table_end(&self) -> Result<()> {
         let Some(cb) = self.inner.table_end else {
             return Ok(());
         };
-        let rc = unsafe { cb(self.table_c.as_ptr(), status, self.inner.usr_data) };
+        let rc = unsafe { cb(self.table_c.as_ptr(), self.inner.usr_data) };
         if rc == SUCCESS {
             Ok(())
         } else {

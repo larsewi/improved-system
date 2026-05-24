@@ -7,7 +7,6 @@ use prost::Message;
 
 use crate::callbacks::Callbacks;
 use crate::config::{Config, TableConfig};
-use crate::ffi::{FAILURE, SUCCESS};
 use crate::storage;
 use crate::table::Table;
 use crate::utils::indent;
@@ -127,7 +126,7 @@ impl State {
 /// Wrap `Table::load_from_callbacks` with the begin/end lifecycle: `table_end`
 /// always fires when `table_begin` succeeded, including on the error path, so
 /// the caller's per-table resources (a DB cursor, a buffer) can always be
-/// released and a partial table can be rolled back via `status`.
+/// released.
 fn load_from_callback(
     name: &str,
     table_config: &TableConfig,
@@ -146,12 +145,7 @@ fn load_from_callback(
         .with_context(|| format!("table '{}'", name))?;
 
     let load_result = Table::load_from_callbacks(name, table_config, &bound);
-    let end_status = if load_result.is_ok() {
-        SUCCESS
-    } else {
-        FAILURE
-    };
-    let end_result = bound.table_end(end_status);
+    let end_result = bound.table_end();
 
     let table = load_result.with_context(|| format!("table '{}'", name))?;
     end_result.with_context(|| format!("table '{}'", name))?;

@@ -51,7 +51,6 @@ static const size_t events_count = sizeof(events_rows) / sizeof(events_rows[0]);
 typedef struct {
   int events_begin_count;
   int events_end_count;
-  int events_end_status;
   int other_table_calls;
 } cb_state_t;
 
@@ -65,11 +64,10 @@ static int test_table_begin(const char *table, void *usr_data) {
   return LCH_SUCCESS;
 }
 
-static int test_table_end(const char *table, int status, void *usr_data) {
+static int test_table_end(const char *table, void *usr_data) {
   cb_state_t *s = (cb_state_t *)usr_data;
   if (strcmp(table, "events") == 0) {
     s->events_end_count++;
-    s->events_end_status = status;
   } else {
     s->other_table_calls++;
   }
@@ -145,12 +143,6 @@ int main(int argc, char *argv[]) {
   if (cb_state.events_end_count != 1) {
     fprintf(stderr, "expected 1 events end, got %d\n",
             cb_state.events_end_count);
-    lch_deinit(cfg);
-    return EXIT_FAILURE;
-  }
-  if (cb_state.events_end_status != LCH_SUCCESS) {
-    fprintf(stderr, "expected events_end status SUCCESS, got %d\n",
-            cb_state.events_end_status);
     lch_deinit(cfg);
     return EXIT_FAILURE;
   }
