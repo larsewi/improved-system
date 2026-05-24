@@ -193,11 +193,24 @@ mod tests {
         FAILURE
     }
 
+    unsafe extern "C" fn fail_table_end(_table: *const c_char, _usr_data: *mut c_void) -> i32 {
+        FAILURE
+    }
+
     fn callbacks_with_failing_begin() -> Callbacks {
         Callbacks::from_ffi(&LchCallbacks {
             table_begin: Some(fail_table_begin),
             read_cell: None,
             table_end: None,
+            usr_data: std::ptr::null_mut(),
+        })
+    }
+
+    fn callbacks_with_failing_end() -> Callbacks {
+        Callbacks::from_ffi(&LchCallbacks {
+            table_begin: None,
+            read_cell: None,
+            table_end: Some(fail_table_end),
             usr_data: std::ptr::null_mut(),
         })
     }
@@ -210,6 +223,19 @@ mod tests {
         let msg = format!("{:#}", err);
         assert!(
             msg.contains("table_begin callback returned failure"),
+            "got: {msg}"
+        );
+        assert!(msg.contains("table 't'"), "got: {msg}");
+    }
+
+    #[test]
+    fn test_table_end_failure_propagates() {
+        let callbacks = callbacks_with_failing_end();
+        let bound = callbacks.for_table("t", &["id"]).unwrap();
+        let err = bound.table_end().unwrap_err();
+        let msg = format!("{:#}", err);
+        assert!(
+            msg.contains("table_end callback returned failure"),
             "got: {msg}"
         );
         assert!(msg.contains("table 't'"), "got: {msg}");
