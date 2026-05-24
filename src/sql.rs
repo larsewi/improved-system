@@ -581,10 +581,10 @@ mod tests {
 
     #[test]
     fn test_quote_literal_number() {
-        assert_eq!(quote_literal(&Cell::from(42.0)), "42");
-        assert_eq!(quote_literal(&Cell::from(-100.0)), "-100");
-        assert_eq!(quote_literal(&Cell::from(2.5)), "2.5");
-        assert_eq!(quote_literal(&Cell::from(-0.5)), "-0.5");
+        assert_eq!(quote_literal(&Cell::number(42.0).unwrap()), "42");
+        assert_eq!(quote_literal(&Cell::number(-100.0).unwrap()), "-100");
+        assert_eq!(quote_literal(&Cell::number(2.5).unwrap()), "2.5");
+        assert_eq!(quote_literal(&Cell::number(-0.5).unwrap()), "-0.5");
     }
 
     #[test]
