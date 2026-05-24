@@ -119,9 +119,11 @@ impl From<bool> for Cell {
     }
 }
 
-impl From<f64> for Cell {
-    fn from(n: f64) -> Self {
-        Cell::Number(n)
+impl TryFrom<f64> for Cell {
+    type Error = anyhow::Error;
+
+    fn try_from(n: f64) -> Result<Self> {
+        Cell::number(n)
     }
 }
 
@@ -331,6 +333,18 @@ mod tests {
     fn number_preserves_finite_values() {
         let v = Cell::number(2.5).unwrap();
         assert_eq!(v, Cell::Number(2.5));
+    }
+
+    #[test]
+    fn try_from_f64_delegates_to_number() {
+        // The fallible conversion routes through Cell::number, so NaN/Inf
+        // can't sneak into a Cell via .try_into() any more than via the
+        // direct constructor.
+        assert!(Cell::try_from(f64::NAN).is_err());
+        assert!(Cell::try_from(f64::INFINITY).is_err());
+        assert!(Cell::try_from(f64::NEG_INFINITY).is_err());
+        let positive_zero = Cell::try_from(-0.0_f64).unwrap();
+        assert_eq!(positive_zero, Cell::number(0.0).unwrap());
     }
 
     #[test]

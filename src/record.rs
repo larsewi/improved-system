@@ -113,7 +113,10 @@ mod tests {
 
     #[test]
     fn proto_round_trip() {
-        let record = Record::new(vec![1.0.into(), "a".into()], vec![true.into(), Cell::Null]);
+        let record = Record::new(
+            vec![Cell::number(1.0).unwrap(), "a".into()],
+            vec![true.into(), Cell::Null],
+        );
         let proto: ProtoRecord = record.clone().into();
         let back: Record = proto.try_into().unwrap();
         assert_eq!(record, back);
