@@ -20,6 +20,10 @@ extern "C" {
 #define LCH_SUCCESS 0
 #define LCH_FAILURE -1
 
+/* Cell-callback return codes (see lch_read_cell_cb_t). */
+#define LCH_END_OF_TABLE 1
+#define LCH_SKIP_RECORD 2
+
 /**
  * Log severity levels.
  *
@@ -42,6 +46,11 @@ typedef enum {
 } lch_kind_t;
 
 typedef struct {
+  /* Must match the declared kind of the field this cell represents:
+   *   TEXT field    -> LCH_VALUE_TEXT or LCH_VALUE_NULL
+   *   NUMBER field  -> LCH_VALUE_NUMBER or LCH_VALUE_NULL
+   *   BOOLEAN field -> LCH_VALUE_BOOLEAN or LCH_VALUE_NULL
+   * LCH_VALUE_NULL is rejected on primary-key fields. */
   lch_kind_t kind;
   union {
     /* Valid when kind == LCH_VALUE_TEXT. Null-terminated, must not be NULL;
@@ -132,16 +141,110 @@ extern lch_config_t *lch_init(const char *work_dir);
 extern void lch_deinit(lch_config_t *cfg);
 
 /**
- * Create a new block from the current CSV data.
+ * Per-table setup hook for callback-backed tables.
  *
- * Reads the configured CSV sources, computes the new state and the delta
- * against the previous state, and writes a new block together with updated
- * STATE and HEAD files. History truncation is performed afterwards.
+ * Invoked once, before the first cell callback for @p table.
  *
- * @param cfg  Valid config handle (must not be NULL).
+ * @param table     Null-terminated table name. Borrowed; valid only for the
+ *                  duration of the call.
+ * @param usr_data  Opaque pointer from lch_callbacks_t::usr_data.
+ * @return LCH_SUCCESS to proceed to pulling cells from this table.
+ *         LCH_FAILURE to abort block creation immediately. table_end is NOT
+ *         invoked when begin returns failure.
+ */
+typedef int (*lch_table_begin_cb_t)(const char *table, void *usr_data);
+
+/**
+ * Per-table teardown hook for callback-backed tables.
+ *
+ * Invoked once for every table whose lch_table_begin_cb_t returned
+ * LCH_SUCCESS, including on the failure path.
+ *
+ * @param table     Null-terminated table name. Borrowed; valid only for the
+ *                  duration of the call.
+ * @param usr_data  Opaque pointer from lch_callbacks_t::usr_data. If teardown
+ *                  needs to distinguish a clean drain from aborted iteration,
+ *                  the callback implementation must track that state itself
+ *                  via this pointer (for example by setting a flag).
+ * @return LCH_SUCCESS to indicate teardown completed.
+ *         LCH_FAILURE makes lch_block_create return LCH_FAILURE even if
+ *         iteration up to this point succeeded.
+ */
+typedef int (*lch_table_end_cb_t)(const char *table, void *usr_data);
+
+/**
+ * Cell callback for callback-backed tables.
+ *
+ * Iteration contract:
+ *   - Rows are requested in ascending order, starting from row == 0.
+ *   - The order in which leech2 asks for columns within a row is unspecified
+ *     and may vary across rows. The caller must support random access by
+ *     @p col or @p field_name.
+ *   - A table is fully drained before any other table is processed, and the
+ *     callback is invoked exclusively on the thread that called
+ *     lch_block_create().
+ *
+ * LCH_END_OF_TABLE / LCH_SKIP_RECORD on any cell short-circuits the rest
+ * of the row: leech2 won't ask for the remaining cells, and any cells
+ * already accepted for the row are discarded.
+ *
+ * @param table       Null-terminated table name. Borrowed.
+ * @param row         0-based row index
+ * @param col         0-based index of the field in config.toml declaration
+ *                    order.
+ * @param field_name  Null-terminated name of the field at @p col. Borrowed.
+ * @param out_cell    On entry, zero-initialised. On LCH_SUCCESS return,
+ *                    populate with the typed cell value. The kind tag must
+ *                    match the field's declared kind. On LCH_END_OF_TABLE,
+ *                    LCH_SKIP_RECORD, or LCH_FAILURE, the contents are
+ *                    ignored.
+ * @param usr_data    Opaque pointer from lch_callbacks_t::usr_data.
+ * @return LCH_SUCCESS         out_cell populated; leech2 will ask for the
+ *                             remaining fields of this row and then
+ *                             advance to row + 1.
+ *         LCH_END_OF_TABLE    No row exists at this index; iteration for
+ *                             this table stops. May be returned from any
+ *                             column.
+ *         LCH_SKIP_RECORD     Drop the current row; leech2 does not ask for
+ *                             any remaining fields of this row and advances
+ *                             to row + 1. May be returned from any column.
+ *         LCH_FAILURE         Unrecoverable error; block creation aborts.
+ */
+typedef int (*lch_read_cell_cb_t)(const char *table, size_t row, size_t col,
+                                  const char *field_name, lch_cell_t *out_cell,
+                                  void *usr_data);
+
+/**
+ * Callback bundle passed to lch_block_create() for callback-backed tables.
+ */
+typedef struct {
+  /** May be NULL if no per-table setup is needed. */
+  lch_table_begin_cb_t table_begin;
+  /** Required when any table in the config is callback-backed. */
+  lch_read_cell_cb_t read_cell;
+  /** May be NULL if no per-table teardown is needed. */
+  lch_table_end_cb_t table_end;
+  /** Opaque pointer forwarded verbatim to every invoked callback. May be
+   *  NULL if the callbacks do not need shared state. */
+  void *usr_data;
+} lch_callbacks_t;
+
+/**
+ * Create a new block from the current snapshot of every configured table.
+ *
+ * Reads each table's contents (from its configured CSV source, or via the
+ * callback bundle for tables that have no source), computes the new state
+ * and the delta against the previous state, and writes a new block together
+ * with updated STATE and HEAD files. History truncation is performed
+ * afterwards.
+ *
+ * @param cfg        Valid config handle (must not be NULL).
+ * @param callbacks  Optional callback bundle. May be NULL when every table
+ *                   in @p cfg is CSV-backed.
  * @return LCH_SUCCESS on success, LCH_FAILURE on error.
  */
-extern int lch_block_create(const lch_config_t *cfg);
+extern int lch_block_create(const lch_config_t *cfg,
+                            const lch_callbacks_t *callbacks);
 
 /**
  * Create a patch from HEAD back to a known hash.

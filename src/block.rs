@@ -6,6 +6,7 @@ use std::time::SystemTime;
 use anyhow::{Context, Result};
 use prost::Message;
 
+use crate::callbacks::Callbacks;
 use crate::config::Config;
 use crate::delta;
 use crate::head;
@@ -82,10 +83,35 @@ impl Block {
         Ok(Self::load_header(work_dir, hash)?.parent)
     }
 
-    pub fn create(config: &Config) -> Result<String> {
+    /// Build a new block from `config`. Callback-backed tables are pulled
+    /// through `callbacks`. Pass `None` when every table in `config` is
+    /// CSV-backed.
+    ///
+    /// If `config` has filters configured and any table is callback-backed,
+    /// a warning naming the affected tables is emitted on every call:
+    /// filters are CSV-only, and the callback owns row inclusion via
+    /// `LCH_SKIP_RECORD`.
+    pub fn create(config: &Config, callbacks: Option<&Callbacks>) -> Result<String> {
+        if callbacks.is_some() && !config.filters.is_default() {
+            let callback_tables: Vec<&str> = config
+                .tables
+                .iter()
+                .filter(|(_, t)| t.source.is_none())
+                .map(|(n, _)| n.as_str())
+                .collect();
+            if !callback_tables.is_empty() {
+                log::warn!(
+                    "Configured filters do not apply to callback-backed table(s): {}. \
+                     Filtering for these tables is the callback's responsibility \
+                     (return LCH_SKIP_RECORD to drop a row).",
+                    callback_tables.join(", ")
+                );
+            }
+        }
+
         let work_dir = &config.work_dir;
         let current_state =
-            state::State::compute(config).context("failed to compute current state")?;
+            state::State::compute(config, callbacks).context("failed to compute current state")?;
 
         let parent_hash = head::load(work_dir).context("failed to load head of chain")?;
 

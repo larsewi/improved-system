@@ -5,7 +5,8 @@ use std::path::Path;
 use anyhow::Result;
 use prost::Message;
 
-use crate::config::Config;
+use crate::callbacks::Callbacks;
+use crate::config::{Config, TableConfig};
 use crate::storage;
 use crate::table::Table;
 use crate::utils::indent;
@@ -80,11 +81,26 @@ impl State {
         Ok(Some(State::try_from(proto)?))
     }
 
-    pub fn compute(config: &Config) -> Result<Self> {
+    /// Build a fresh snapshot of every table declared in `config`.
+    ///
+    /// Tables with a configured `source` are loaded from CSV exactly as
+    /// before. Tables without a `source` are pulled through `callbacks`;
+    /// reaching such a table with `callbacks == None` is an error.
+    pub fn compute(config: &Config, callbacks: Option<&Callbacks>) -> Result<Self> {
         let mut tables: HashMap<String, Table> = HashMap::new();
 
         for (name, table_config) in &config.tables {
-            let table = Table::load(&config.work_dir, name, table_config, &config.filters)?;
+            let table = if table_config.source.is_some() {
+                Table::load_from_csv(&config.work_dir, name, table_config, &config.filters)?
+            } else {
+                let Some(cbs) = callbacks else {
+                    anyhow::bail!(
+                        "table '{}' is callback-backed but no callbacks were provided",
+                        name
+                    );
+                };
+                load_from_callback(name, table_config, cbs)?
+            };
             tables.insert(name.clone(), table);
         }
 
@@ -105,4 +121,38 @@ impl State {
         );
         Ok(())
     }
+}
+
+/// Wrap `Table::load_from_callbacks` with the begin/end lifecycle: `table_end`
+/// always fires when `table_begin` succeeded, including on the error path, so
+/// the caller's per-table resources (a DB cursor, a buffer) can always be
+/// released.
+fn load_from_callback(
+    name: &str,
+    table_config: &TableConfig,
+    callbacks: &Callbacks,
+) -> Result<Table> {
+    let field_names: Vec<&str> = table_config
+        .fields
+        .iter()
+        .map(|f| f.name.as_str())
+        .collect();
+    let bound = callbacks.for_table(name, &field_names)?;
+    bound.table_begin()?;
+
+    let load_result = Table::load_from_callbacks(name, table_config, &bound);
+    let end_result = bound.table_end();
+
+    if load_result.is_err()
+        && let Err(end_err) = &end_result
+    {
+        log::warn!(
+            "table_end for '{}' also failed after load error: {:#}",
+            name,
+            end_err
+        );
+    }
+    let table = load_result?;
+    end_result?;
+    Ok(table)
 }

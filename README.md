@@ -260,7 +260,10 @@ discover compile and link flags with `pkg-config --cflags --libs leech2`.
 ```c
 lch_config_t *cfg = lch_init("/path/to/workdir");
 
-lch_block_create(cfg);
+/* Every table in the config has a `source` key, so no callback bundle is
+ * needed -- pass NULL. See "Callback-backed tables" below for the case where
+ * a table's rows come from the application instead of a CSV file. */
+lch_block_create(cfg, NULL);
 
 lch_buffer_t patch = {0};
 lch_patch_create(cfg, NULL, &patch);
