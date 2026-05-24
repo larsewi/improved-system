@@ -134,7 +134,7 @@ fn cmd_init(work_dir: &std::path::Path) -> Result<()> {
 
     std::fs::write(
         work_dir.join("config.toml"),
-        r#"[tables.products]
+        r#"[tables.products.csv]
 source = "products.csv"
 header = true
 
