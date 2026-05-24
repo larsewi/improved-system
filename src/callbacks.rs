@@ -240,4 +240,27 @@ mod tests {
         );
         assert!(msg.contains("table 't'"), "got: {msg}");
     }
+
+    #[test]
+    fn test_read_cell_missing_is_an_error() {
+        // A callback-backed table with no read_cell hook is a configuration
+        // error: the cell-pull contract is unsatisfiable.
+        let callbacks = Callbacks::from_ffi(&LchCallbacks {
+            table_begin: None,
+            read_cell: None,
+            table_end: None,
+            usr_data: std::ptr::null_mut(),
+        });
+        let bound = callbacks.for_table("t", &["id"]).unwrap();
+        let err = match bound.read_cell(0, 0) {
+            Ok(_) => panic!("expected read_cell to fail without a read_cell hook"),
+            Err(e) => e,
+        };
+        let msg = format!("{:#}", err);
+        assert!(
+            msg.contains("no read_cell callback was provided"),
+            "got: {msg}"
+        );
+        assert!(msg.contains("table 't'"), "got: {msg}");
+    }
 }
