@@ -151,7 +151,7 @@ sentinels, and the filters block
 When filters are configured alongside any callback-backed table, a
 warning is logged at block creation; the callback owns row inclusion for
 those tables via
-.BR LCH_FILTER_RECORD .
+.BR LCH_SKIP_RECORD .
 .SS Patch operations
 .TP
 .BI "int lch_patch_create(const lch_config_t *" cfg ", const char *" hash ", lch_buffer_t *" out )
@@ -311,7 +311,7 @@ the caller may dispatch on either. It returns
 .BR LCH_SUCCESS " after writing " out_cell ", "
 .B LCH_END_OF_TABLE
 to stop iteration,
-.B LCH_FILTER_RECORD
+.B LCH_SKIP_RECORD
 to drop the current row, or
 .B LCH_FAILURE
 to abort block creation. See
@@ -335,7 +335,7 @@ The cell callback
 additionally uses
 .B LCH_END_OF_TABLE (1)
 to signal that no row exists at the requested index, and
-.B LCH_FILTER_RECORD (2)
+.B LCH_SKIP_RECORD (2)
 to drop the current row.
 .PP
 .BR lch_init ()

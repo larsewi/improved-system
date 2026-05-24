@@ -16,10 +16,10 @@ pub const FAILURE: i32 = -1;
 /// `LCH_END_OF_TABLE` from `leech2.h`. `lch_read_cell_cb_t` return code: the
 /// row at this index does not exist; iteration for this table stops.
 pub const END_OF_TABLE: i32 = 1;
-/// `LCH_FILTER_RECORD` from `leech2.h`. `lch_read_cell_cb_t` return code:
+/// `LCH_SKIP_RECORD` from `leech2.h`. `lch_read_cell_cb_t` return code:
 /// drop the current row; advance to the next row without consulting any
 /// further fields.
-pub const FILTER_RECORD: i32 = 2;
+pub const SKIP_RECORD: i32 = 2;
 
 /// `LCH_VALUE_NULL` from `leech2.h`. Cell kind tag.
 pub const VALUE_NULL: c_int = 0;

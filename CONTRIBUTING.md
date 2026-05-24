@@ -42,8 +42,8 @@ supplied callback bundle when `source` is omitted (the C application produces
 typed cells directly via `lch_callbacks_t`). Both paths produce the same in-
 memory table representation; everything downstream — delta computation, layout
 change detection, block storage, truncation — is identical. Filters apply to
-CSV-backed tables only; callback-backed tables filter rows by returning
-`LCH_FILTER_RECORD`.
+CSV-backed tables only; callback-backed tables skip rows by returning
+`LCH_SKIP_RECORD`.
 
 When starting a fresh chain (HEAD is genesis), the block is stored with an empty
 payload — delta computation and STATE file loading are skipped entirely. The

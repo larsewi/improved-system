@@ -89,7 +89,7 @@ impl Block {
     ///
     /// If `config` has filters configured and any table is callback-backed,
     /// a one-time warning is emitted naming the affected tables: filters are
-    /// CSV-only, and the callback owns row inclusion via `LCH_FILTER_RECORD`.
+    /// CSV-only, and the callback owns row inclusion via `LCH_SKIP_RECORD`.
     pub fn create(config: &Config, callbacks: Option<&Callbacks>) -> Result<String> {
         if callbacks.is_some() && !config.filters.is_default() {
             let callback_tables: Vec<&str> = config
@@ -102,7 +102,7 @@ impl Block {
                 log::warn!(
                     "Configured filters do not apply to callback-backed table(s): {}. \
                      Filtering for these tables is the callback's responsibility \
-                     (return LCH_FILTER_RECORD to drop a row).",
+                     (return LCH_SKIP_RECORD to drop a row).",
                     callback_tables.join(", ")
                 );
             }

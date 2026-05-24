@@ -345,9 +345,9 @@ fn fetch_callback_row(
                     group_out.push(cell);
                 }
                 CellResult::EndOfTable => return Ok(RowOutcome::EndOfTable),
-                CellResult::FilterRecord => {
+                CellResult::SkipRecord => {
                     log::trace!(
-                        "Callback filtered row {} of table '{}' at field '{}'",
+                        "Callback skipped row {} of table '{}' at field '{}'",
                         row + 1,
                         name,
                         field_cfg.name,
@@ -845,7 +845,7 @@ mod tests {
 
     use crate::callbacks::{Callbacks, LchCallbacks};
     use crate::ffi::{
-        END_OF_TABLE, FILTER_RECORD, LchCell, LchCellPayload, SUCCESS as FFI_SUCCESS, VALUE_NULL,
+        END_OF_TABLE, LchCell, LchCellPayload, SKIP_RECORD, SUCCESS as FFI_SUCCESS, VALUE_NULL,
     };
     use std::cell::RefCell;
     use std::collections::HashMap;
@@ -853,7 +853,7 @@ mod tests {
 
     enum CellAction {
         Cell(CellValue),
-        Filter,
+        Skip,
     }
 
     enum CellValue {
@@ -904,7 +904,7 @@ mod tests {
                 return END_OF_TABLE;
             };
             match action {
-                CellAction::Filter => FILTER_RECORD,
+                CellAction::Skip => SKIP_RECORD,
                 CellAction::Cell(value) => {
                     let cell = match value {
                         CellValue::Null => LchCell {
@@ -999,7 +999,7 @@ mod tests {
     }
 
     #[test]
-    fn test_load_from_callbacks_filter_record_drops_row() {
+    fn test_load_from_callbacks_skip_record_drops_row() {
         let config = typed_config(vec![
             make_typed_field("id", Kind::Number, true, None),
             make_typed_field("name", Kind::Text, false, None),
@@ -1007,8 +1007,8 @@ mod tests {
         install_script(Script {
             rows: vec![
                 HashMap::from([("id", cell_number(1.0)), ("name", cell_text("Alice"))]),
-                // Row 2 is filtered when leech asks for its primary key.
-                HashMap::from([("id", CellAction::Filter), ("name", cell_text("Bob"))]),
+                // Row 2 is skipped when leech asks for its primary key.
+                HashMap::from([("id", CellAction::Skip), ("name", cell_text("Bob"))]),
                 HashMap::from([("id", cell_number(3.0)), ("name", cell_text("Carol"))]),
             ],
         });

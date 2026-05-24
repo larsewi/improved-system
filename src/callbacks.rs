@@ -13,7 +13,7 @@ use anyhow::{Context, Result, bail};
 
 use crate::cell::Cell;
 use crate::ffi::{
-    END_OF_TABLE, FILTER_RECORD, LchCell, LchCellPayload, SUCCESS, VALUE_NULL, cell_from_ffi,
+    END_OF_TABLE, LchCell, LchCellPayload, SKIP_RECORD, SUCCESS, VALUE_NULL, cell_from_ffi,
 };
 
 type TableBeginFn = unsafe extern "C" fn(*const c_char, *mut c_void) -> i32;
@@ -45,8 +45,8 @@ pub enum CellResult {
     Cell(Cell),
     /// `LCH_END_OF_TABLE`: no row exists at this index; iteration stops.
     EndOfTable,
-    /// `LCH_FILTER_RECORD`: drop the current row.
-    FilterRecord,
+    /// `LCH_SKIP_RECORD`: drop the current row.
+    SkipRecord,
 }
 
 /// Rust-side view of the callback bundle. Owned by `lch_block_create` for
@@ -171,7 +171,7 @@ impl TableCallbacks<'_> {
                 Ok(CellResult::Cell(cell))
             }
             END_OF_TABLE => Ok(CellResult::EndOfTable),
-            FILTER_RECORD => Ok(CellResult::FilterRecord),
+            SKIP_RECORD => Ok(CellResult::SkipRecord),
             _ => bail!(
                 "read_cell callback returned failure for table '{}' row {} field '{}'",
                 self.table_c.to_string_lossy(),
